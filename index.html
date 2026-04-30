@@ -3,1051 +3,705 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#0a0e1a">
+<meta name="theme-color" content="#0b0f1c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="TradingAssist">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/manifest.json">
 <title>TradingAssist-NTv0.1</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root {
-  --bg: #0a0e1a;
-  --bg2: #111827;
-  --bg3: #1a2235;
-  --border: #1e2d45;
-  --border2: #253550;
-  --text: #e8edf5;
-  --text2: #8fa3c0;
-  --text3: #4a6080;
-  --accent: #3b82f6;
-  --accent2: #60a5fa;
-  --green: #10b981;
-  --green2: #34d399;
-  --green-bg: rgba(16,185,129,0.1);
-  --red: #ef4444;
-  --red2: #f87171;
-  --red-bg: rgba(239,68,68,0.1);
-  --amber: #f59e0b;
-  --amber-bg: rgba(245,158,11,0.1);
-  --purple: #8b5cf6;
-  --purple-bg: rgba(139,92,246,0.1);
-  --radius: 12px;
-  --radius-sm: 8px;
+:root{
+  --bg:#0b0f1c;--bg2:#111827;--bg3:#1a2236;--bg4:#212d42;
+  --border:#1e2d45;--border2:#253550;
+  --text:#dce6f0;--text2:#7a96b8;--text3:#3d5470;
+  --accent:#3b82f6;--accent2:#93c5fd;
+  --green:#22c55e;--green2:#4ade80;--gbg:rgba(34,197,94,.08);
+  --red:#ef4444;--red2:#f87171;--rbg:rgba(239,68,68,.08);
+  --amber:#f59e0b;--abg:rgba(245,158,11,.08);
+  --purple:#a78bfa;--pbg:rgba(167,139,250,.08);
+  --r:10px;--rs:6px;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'Syne', sans-serif;
-  min-height: 100vh;
-  overflow-x: hidden;
-}
-/* Scrollbar */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: var(--bg2); }
-::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
-
-/* Layout */
-.app { max-width: 1400px; margin: 0 auto; padding: 20px 16px; }
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-weight:400;font-size:14px;line-height:1.5;min-height:100vh}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+.app{max-width:1400px;margin:0 auto;padding:16px}
 
 /* Header */
-.header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px; background: var(--bg2);
-  border: 1px solid var(--border); border-radius: var(--radius);
-  margin-bottom: 20px;
-}
-.logo { display: flex; align-items: center; gap: 10px; }
-.logo-icon {
-  width: 36px; height: 36px; background: var(--accent);
-  border-radius: 8px; display: flex; align-items: center; justify-content: center;
-  font-size: 18px;
-}
-.logo-text { font-size: 18px; font-weight: 700; color: var(--text); }
-.logo-sub { font-size: 11px; color: var(--text3); font-family: 'DM Mono', monospace; }
-.header-right { display: flex; align-items: center; gap: 10px; }
-.live-badge {
-  display: flex; align-items: center; gap: 5px;
-  background: var(--green-bg); color: var(--green);
-  padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
-}
-.live-dot {
-  width: 6px; height: 6px; background: var(--green);
-  border-radius: 50%; animation: pulse 2s infinite;
-}
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-.refresh-btn {
-  background: var(--bg3); border: 1px solid var(--border2);
-  color: var(--text2); padding: 8px 16px; border-radius: var(--radius-sm);
-  font-size: 13px; cursor: pointer; font-family: 'Syne', sans-serif;
-  transition: all 0.2s; display: flex; align-items: center; gap: 6px;
-}
-.refresh-btn:hover { background: var(--border); color: var(--text); }
-.refresh-btn.loading { opacity: 0.7; pointer-events: none; }
-.spin { animation: spin 1s linear infinite; display: inline-block; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:34px;height:34px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px}
+.logo-name{font-size:16px;font-weight:600}
+.logo-ver{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace}
+.hdr-r{display:flex;align-items:center;gap:8px}
+.live{display:flex;align-items:center;gap:5px;background:var(--gbg);color:var(--green);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500}
+.dot{width:6px;height:6px;background:var(--green);border-radius:50%;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.btn{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:6px 14px;border-radius:var(--rs);font-size:12px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;display:flex;align-items:center;gap:5px}
+.btn:hover{background:var(--bg4);color:var(--text)}
+.btn.loading{opacity:.6;pointer-events:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .7s linear infinite;display:inline-block}
 
-/* Nav Tabs */
-.nav {
-  display: flex; gap: 4px; margin-bottom: 20px;
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 4px; overflow-x: auto;
-}
-.nav-tab {
-  padding: 8px 16px; border-radius: var(--radius-sm);
-  font-size: 13px; font-weight: 500; cursor: pointer;
-  color: var(--text2); white-space: nowrap; transition: all 0.2s;
-  border: none; background: transparent; font-family: 'Syne', sans-serif;
-}
-.nav-tab.active {
-  background: var(--accent); color: #fff;
-}
-.nav-tab:hover:not(.active) { color: var(--text); background: var(--bg3); }
+/* Nav */
+.nav{display:flex;gap:2px;margin-bottom:12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:3px;overflow-x:auto}
+.ntab{padding:7px 14px;border-radius:var(--rs);font-size:12px;font-weight:500;cursor:pointer;color:var(--text2);white-space:nowrap;transition:all .15s;border:none;background:transparent;font-family:'Inter',sans-serif}
+.ntab.active{background:var(--accent);color:#fff}
+.ntab:hover:not(.active){color:var(--text);background:var(--bg3)}
+.sec{display:none}.sec.active{display:block}
 
-/* Sections */
-.section { display: none; }
-.section.active { display: block; }
+/* Cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin-bottom:12px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:13px}
+.clbl{font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-family:'JetBrains Mono',monospace;margin-bottom:4px}
+.cval{font-size:19px;font-weight:500;color:var(--text)}
+.cval.up{color:var(--green)}.cval.dn{color:var(--red)}.cval.ac{color:var(--accent2)}.cval.pu{color:var(--purple)}.cval.am{color:var(--amber)}
+.csub{font-size:11px;color:var(--text3);margin-top:3px}
 
-/* Summary Cards */
-.cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px; margin-bottom: 20px;
-}
-.card {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 16px;
-  transition: border-color 0.2s;
-}
-.card:hover { border-color: var(--border2); }
-.card-label { font-size: 11px; color: var(--text3); margin-bottom: 6px; font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 0.5px; }
-.card-value { font-size: 24px; font-weight: 700; color: var(--text); }
-.card-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
-.card-value.up { color: var(--green); }
-.card-value.down { color: var(--red); }
-.card-value.accent { color: var(--accent2); }
-.card-value.purple { color: var(--purple); }
-.card-value.amber { color: var(--amber); }
-
-/* Account Header */
-.account-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 12px; margin-top: 24px;
-}
-.account-title {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 15px; font-weight: 600;
-}
-.account-badge {
-  font-size: 10px; padding: 2px 8px; border-radius: 20px;
-  font-family: 'DM Mono', monospace; font-weight: 500;
-}
-.badge-isa { background: var(--purple-bg); color: var(--purple); }
-.badge-invest { background: var(--amber-bg); color: var(--amber); }
-.badge-watch { background: var(--green-bg); color: var(--green); }
+/* Section header */
+.shdr{display:flex;align-items:center;justify-content:space-between;margin:16px 0 10px}
+.stitle{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:500}
+.badge{font-size:10px;padding:2px 7px;border-radius:10px;font-family:'JetBrains Mono',monospace;font-weight:500}
+.b-isa{background:var(--pbg);color:var(--purple)}
+.b-inv{background:var(--abg);color:var(--amber)}
+.b-wat{background:var(--gbg);color:var(--green)}
+.b-own{background:rgba(59,130,246,.1);color:var(--accent2)}
 
 /* Table */
-.table-wrap {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: var(--radius); overflow: hidden; margin-bottom: 20px;
-  overflow-x: auto;
-}
-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 900px; }
-th {
-  text-align: left; padding: 10px 14px;
-  font-size: 10px; font-weight: 600; color: var(--text3);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg3); font-family: 'DM Mono', monospace;
-  text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;
-}
-td {
-  padding: 10px 14px; border-bottom: 1px solid var(--border);
-  color: var(--text); vertical-align: middle;
-}
-tr:last-child td { border-bottom: none; }
-tr:hover td { background: rgba(255,255,255,0.02); }
-.ticker-cell { display: flex; flex-direction: column; gap: 2px; }
-.ticker { font-weight: 600; font-family: 'DM Mono', monospace; font-size: 13px; }
-.sector-tag {
-  font-size: 10px; color: var(--text3);
-  background: var(--bg3); padding: 1px 6px;
-  border-radius: 4px; display: inline-block;
-}
-.up { color: var(--green); }
-.down { color: var(--red); }
-.neutral { color: var(--text2); }
+.tw{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:12px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:860px}
+th{text-align:left;padding:8px 12px;font-size:10px;font-weight:500;color:var(--text3);border-bottom:1px solid var(--border);background:var(--bg3);font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.015)}
+.tick{font-weight:500;font-family:'JetBrains Mono',monospace;font-size:12px}
+.stag{font-size:10px;color:var(--text3);background:var(--bg3);padding:1px 5px;border-radius:3px;display:inline-block;margin-top:2px}
+.mono{font-family:'JetBrains Mono',monospace;font-size:12px}
+.up{color:var(--green)}.dn{color:var(--red)}.nt{color:var(--text2)}
 
-/* Signal Pills */
-.pill {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 8px; border-radius: 20px;
-  font-size: 11px; font-weight: 600; white-space: nowrap;
-}
-.pill-strong-bull { background: rgba(16,185,129,0.2); color: var(--green2); }
-.pill-bull { background: rgba(16,185,129,0.1); color: var(--green); }
-.pill-neutral { background: var(--bg3); color: var(--text2); }
-.pill-bear { background: rgba(239,68,68,0.1); color: var(--red); }
-.pill-strong-bear { background: rgba(239,68,68,0.2); color: var(--red2); }
+/* Pills */
+.pill{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:500;white-space:nowrap}
+.p-sb{background:rgba(34,197,94,.15);color:var(--green2)}
+.p-b{background:rgba(34,197,94,.08);color:var(--green)}
+.p-n{background:var(--bg3);color:var(--text2)}
+.p-br{background:rgba(239,68,68,.08);color:var(--red)}
+.p-sbr{background:rgba(239,68,68,.15);color:var(--red2)}
+.p-ld{background:var(--bg3);color:var(--text3);font-style:italic}
 
 /* Indicators */
-.indicators { display: flex; gap: 6px; flex-wrap: wrap; }
-.ind-tag {
-  font-size: 10px; padding: 2px 6px; border-radius: 4px;
-  font-family: 'DM Mono', monospace; white-space: nowrap;
-  background: var(--bg3); color: var(--text2);
-}
-.ind-tag.rsi-high { background: var(--red-bg); color: var(--red2); }
-.ind-tag.rsi-low { background: var(--green-bg); color: var(--green2); }
-.ind-tag.macd-bull { background: var(--green-bg); color: var(--green); }
-.ind-tag.macd-bear { background: var(--red-bg); color: var(--red); }
+.ibox{display:flex;gap:3px;flex-wrap:wrap}
+.itag{font-size:10px;padding:2px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;white-space:nowrap;background:var(--bg3);color:var(--text2)}
+.itag.ob{background:var(--rbg);color:var(--red2)}
+.itag.os{background:var(--gbg);color:var(--green2)}
+.itag.mb{background:var(--gbg);color:var(--green)}
+.itag.mr{background:var(--rbg);color:var(--red)}
+.itag.gc{background:var(--gbg);color:var(--green)}
+.itag.dc{background:var(--rbg);color:var(--red)}
+.itag.ld{color:var(--text3)}
 
-/* News inline */
-.news-inline {
-  font-size: 11px; color: var(--text2); max-width: 200px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  cursor: pointer;
-}
-.news-inline:hover { color: var(--accent2); }
+/* News */
+.nhl{font-size:11px;color:var(--text2);max-width:175px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.nhl:hover{color:var(--accent2)}
+.nmore{background:none;border:none;color:var(--accent);font-size:10px;cursor:pointer;padding:1px 4px;border-radius:3px;font-family:'Inter',sans-serif;display:block;margin-top:2px}
+.nmore:hover{background:var(--pbg)}
+.nld{font-size:10px;color:var(--text3);font-style:italic}
 
-/* News expand button */
-.news-btn {
-  background: none; border: none; color: var(--accent);
-  font-size: 11px; cursor: pointer; padding: 2px 6px;
-  border-radius: 4px; font-family: 'Syne', sans-serif;
-}
-.news-btn:hover { background: var(--purple-bg); }
+/* Modal */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center;padding:16px}
+.overlay.open{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);max-width:580px;width:100%;max-height:80vh;overflow-y:auto}
+.mhdr{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2)}
+.mhdr h3{font-size:13px;font-weight:500}
+.mcls{background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:4px}
+.mcls:hover{background:var(--bg3);color:var(--text)}
+.mbody{padding:13px 18px}
+.nc{padding:11px;border:1px solid var(--border);border-radius:var(--rs);margin-bottom:8px;background:var(--bg3)}
+.nc-t{font-size:12px;font-weight:500;margin-bottom:3px;line-height:1.4}
+.nc-m{font-size:10px;color:var(--text3);margin-bottom:5px;font-family:'JetBrains Mono',monospace}
+.nc-s{font-size:11px;color:var(--text2);line-height:1.5}
+.nc-l{font-size:10px;color:var(--accent);text-decoration:none;display:inline-block;margin-top:4px}
 
-/* News Modal */
-.modal-overlay {
-  display: none; position: fixed; inset: 0;
-  background: rgba(0,0,0,0.7); z-index: 100;
-  align-items: center; justify-content: center; padding: 20px;
-}
-.modal-overlay.open { display: flex; }
-.modal {
-  background: var(--bg2); border: 1px solid var(--border2);
-  border-radius: var(--radius); max-width: 600px; width: 100%;
-  max-height: 80vh; overflow-y: auto;
-}
-.modal-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px; border-bottom: 1px solid var(--border);
-  position: sticky; top: 0; background: var(--bg2);
-}
-.modal-title { font-size: 16px; font-weight: 600; }
-.modal-close {
-  background: none; border: none; color: var(--text2);
-  font-size: 20px; cursor: pointer; width: 28px; height: 28px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 4px;
-}
-.modal-close:hover { background: var(--bg3); color: var(--text); }
-.modal-body { padding: 16px 20px; }
-.news-card {
-  padding: 12px; border: 1px solid var(--border);
-  border-radius: var(--radius-sm); margin-bottom: 10px;
-  background: var(--bg3);
-}
-.news-card-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
-.news-card-meta { font-size: 11px; color: var(--text3); margin-bottom: 6px; }
-.news-card-summary { font-size: 12px; color: var(--text2); line-height: 1.5; }
-.news-card-link {
-  font-size: 11px; color: var(--accent); text-decoration: none;
-  display: inline-block; margin-top: 6px;
-}
+/* Watchlist add */
+.wladd{display:flex;gap:8px;margin-bottom:12px}
+.wlinput{flex:1;background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:7px 12px;border-radius:var(--rs);font-size:12px;font-family:'Inter',sans-serif;outline:none}
+.wlinput:focus{border-color:var(--accent)}
+.wlinput::placeholder{color:var(--text3)}
+.addbtn{background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:var(--rs);font-size:12px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s}
+.addbtn:hover{background:#2563eb}
+.rmbtn{background:none;border:none;color:var(--red);font-size:11px;cursor:pointer;padding:3px 7px;border-radius:3px}
+.rmbtn:hover{background:var(--rbg)}
 
-/* Watchlist Add */
-.watchlist-add {
-  display: flex; gap: 8px; margin-bottom: 16px;
-}
-.watchlist-input {
-  flex: 1; background: var(--bg2); border: 1px solid var(--border2);
-  color: var(--text); padding: 8px 14px; border-radius: var(--radius-sm);
-  font-size: 13px; font-family: 'Syne', sans-serif; outline: none;
-}
-.watchlist-input:focus { border-color: var(--accent); }
-.watchlist-input::placeholder { color: var(--text3); }
-.add-btn {
-  background: var(--accent); color: #fff; border: none;
-  padding: 8px 16px; border-radius: var(--radius-sm);
-  font-size: 13px; cursor: pointer; font-family: 'Syne', sans-serif;
-  font-weight: 600; transition: background 0.2s;
-}
-.add-btn:hover { background: #2563eb; }
-.remove-btn {
-  background: none; border: none; color: var(--red);
-  font-size: 13px; cursor: pointer; padding: 4px 8px;
-  border-radius: 4px;
-}
-.remove-btn:hover { background: var(--red-bg); }
+/* P&L periods */
+.pnlrow{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px}
+.pnli{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:9px 10px;text-align:center}
+.pnll{font-size:9px;color:var(--text3);margin-bottom:3px;font-family:'JetBrains Mono',monospace;text-transform:uppercase}
+.pnlv{font-size:13px;font-weight:500}
 
 /* Suggestions */
-.timeframe-tabs {
-  display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap;
-}
-.tf-tab {
-  padding: 6px 14px; border-radius: var(--radius-sm);
-  font-size: 12px; font-weight: 500; cursor: pointer;
-  background: var(--bg3); color: var(--text2);
-  border: 1px solid var(--border); transition: all 0.2s;
-  font-family: 'Syne', sans-serif;
-}
-.tf-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-.suggestions-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-}
-.suggestion-card {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 16px;
-  transition: border-color 0.2s;
-}
-.suggestion-card:hover { border-color: var(--border2); }
-.sug-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
-.sug-ticker { font-size: 18px; font-weight: 700; font-family: 'DM Mono', monospace; }
-.sug-company { font-size: 11px; color: var(--text2); }
-.risk-badge { font-size: 10px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
-.risk-low { background: var(--green-bg); color: var(--green2); }
-.risk-medium { background: var(--amber-bg); color: var(--amber); }
-.risk-high { background: var(--red-bg); color: var(--red2); }
-.risk-very-high { background: rgba(239,68,68,0.3); color: #fca5a5; }
-.sug-targets {
-  display: grid; grid-template-columns: repeat(4, 1fr);
-  gap: 6px; margin: 10px 0;
-}
-.target-item {
-  background: var(--bg3); border-radius: var(--radius-sm);
-  padding: 6px; text-align: center;
-}
-.target-label { font-size: 9px; color: var(--text3); margin-bottom: 2px; font-family: 'DM Mono', monospace; }
-.target-val { font-size: 13px; font-weight: 600; color: var(--green); }
-.sug-reason { font-size: 12px; color: var(--text2); line-height: 1.4; margin-bottom: 8px; }
-.sug-sector { font-size: 10px; color: var(--text3); }
-.owned-badge {
-  font-size: 10px; padding: 2px 6px; border-radius: 4px;
-  background: var(--purple-bg); color: var(--purple);
-  font-family: 'DM Mono', monospace;
-}
+.tftabs{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
+.tftab{padding:5px 13px;border-radius:var(--rs);font-size:11px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text2);border:1px solid var(--border);transition:all .15s;font-family:'Inter',sans-serif}
+.tftab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:10px}
+.scard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;transition:border-color .15s}
+.scard:hover{border-color:var(--border2)}
+.stop{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+.stick{font-size:17px;font-weight:600;font-family:'JetBrains Mono',monospace}
+.sco{font-size:11px;color:var(--text2);margin-top:2px}
+.risk{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:500}
+.rl{background:var(--gbg);color:var(--green2)}
+.rm{background:var(--abg);color:var(--amber)}
+.rh{background:var(--rbg);color:var(--red2)}
+.rvh{background:rgba(239,68,68,.2);color:#fca5a5}
+.stgts{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin:10px 0}
+.tgt{background:var(--bg3);border-radius:var(--rs);padding:6px 4px;text-align:center}
+.tgtl{font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-bottom:2px}
+.tgtv{font-size:12px;font-weight:500;color:var(--green)}
+.sreason{font-size:11px;color:var(--text2);line-height:1.45;margin-bottom:6px}
+.ssec{font-size:10px;color:var(--text3)}
 
 /* Earnings */
-.earnings-list {
-  background: var(--bg2); border: 1px solid var(--border);
-  border-radius: var(--radius); overflow: hidden;
-}
-.earnings-item {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; border-bottom: 1px solid var(--border);
-}
-.earnings-item:last-child { border-bottom: none; }
-.earnings-left h4 { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
-.earnings-left p { font-size: 12px; color: var(--text2); }
-.earnings-right { text-align: right; }
-.earnings-date { font-size: 13px; font-weight: 600; color: var(--accent2); margin-bottom: 4px; font-family: 'DM Mono', monospace; }
+.elist{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.erow{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--border)}
+.erow:last-child{border-bottom:none}
+.erow:hover{background:rgba(255,255,255,.015)}
+.en{font-size:13px;font-weight:500;margin-bottom:2px}
+.ee{font-size:11px;color:var(--text2)}
+.ed{font-size:12px;font-weight:500;color:var(--accent2);font-family:'JetBrains Mono',monospace;margin-bottom:3px}
 
-/* P&L Time periods */
-.pnl-periods {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  gap: 8px; margin-bottom: 16px;
-}
-.pnl-period {
-  background: var(--bg3); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 10px 12px; text-align: center;
-}
-.pnl-period-label { font-size: 10px; color: var(--text3); margin-bottom: 4px; font-family: 'DM Mono', monospace; }
-.pnl-period-val { font-size: 15px; font-weight: 700; }
+/* Loading/Error */
+.ldg{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:50px;gap:10px}
+.sp{width:26px;height:26px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+.ldg p{font-size:12px;color:var(--text3)}
+.err{background:var(--rbg);border:1px solid rgba(239,68,68,.2);border-radius:var(--r);padding:12px 14px;font-size:12px;color:var(--red2);margin-bottom:12px}
+.notice{background:var(--abg);border:1px solid rgba(245,158,11,.2);border-radius:var(--rs);padding:9px 12px;font-size:11px;color:var(--amber);margin-top:12px}
+.ind-loading{font-size:10px;color:var(--text3);font-style:italic}
 
-/* Loading */
-.loading-wrap {
-  display: flex; align-items: center; justify-content: center;
-  padding: 60px; flex-direction: column; gap: 12px;
-}
-.loading-spinner {
-  width: 32px; height: 32px; border: 2px solid var(--border2);
-  border-top-color: var(--accent); border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-.loading-text { font-size: 13px; color: var(--text3); }
-
-/* Error */
-.error-wrap {
-  background: var(--red-bg); border: 1px solid rgba(239,68,68,0.3);
-  border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
-  font-size: 13px; color: var(--red2);
-}
-
-/* Responsive */
-@media (max-width: 640px) {
-  .header { flex-direction: column; gap: 10px; align-items: flex-start; }
-  .cards-grid { grid-template-columns: repeat(2, 1fr); }
-  .suggestions-grid { grid-template-columns: 1fr; }
-  table { min-width: 700px; }
+@media(max-width:640px){
+  .hdr{flex-direction:column;gap:8px;align-items:flex-start}
+  .cards{grid-template-columns:repeat(2,1fr)}
+  .pnlrow{grid-template-columns:repeat(3,1fr)}
+  .sgrid{grid-template-columns:1fr}
+  table{min-width:700px}
 }
 </style>
 </head>
 <body>
 <div class="app">
 
-  <!-- Header -->
-  <div class="header">
+  <div class="hdr">
     <div class="logo">
       <div class="logo-icon">📈</div>
       <div>
-        <div class="logo-text">TradingAssist</div>
-        <div class="logo-sub">NT v0.1 • GBP</div>
+        <div class="logo-name">TradingAssist</div>
+        <div class="logo-ver">NT v0.1 · GBP</div>
       </div>
     </div>
-    <div class="header-right">
-      <div class="live-badge"><div class="live-dot"></div> LIVE</div>
-      <button class="refresh-btn" onclick="refreshAll()">
-        <span id="refresh-icon">⟳</span> Refresh
+    <div class="hdr-r">
+      <div class="live"><div class="dot"></div>LIVE</div>
+      <button class="btn" id="ref-btn" onclick="refreshAll()">
+        <span id="ref-ico">⟳</span> Refresh
       </button>
     </div>
   </div>
 
-  <!-- Nav -->
   <div class="nav">
-    <button class="nav-tab active" onclick="showTab('overview')">📊 Overview</button>
-    <button class="nav-tab" onclick="showTab('isa')">🏦 ISA Portfolio</button>
-    <button class="nav-tab" onclick="showTab('invest')">💼 Invest Portfolio</button>
-    <button class="nav-tab" onclick="showTab('watchlist')">👁 Watchlist</button>
-    <button class="nav-tab" onclick="showTab('suggestions')">🤖 AI Suggestions</button>
-    <button class="nav-tab" onclick="showTab('earnings')">📅 Earnings</button>
+    <button class="ntab active" onclick="showTab('overview',this)">Overview</button>
+    <button class="ntab" onclick="showTab('isa',this)">ISA Portfolio</button>
+    <button class="ntab" onclick="showTab('invest',this)">Invest Portfolio</button>
+    <button class="ntab" onclick="showTab('watchlist',this)">Watchlist</button>
+    <button class="ntab" onclick="showTab('suggestions',this)">AI Suggestions</button>
+    <button class="ntab" onclick="showTab('earnings',this)">Earnings</button>
   </div>
 
-  <!-- Overview Section -->
-  <div id="section-overview" class="section active">
-    <div id="overview-content">
-      <div class="loading-wrap">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Loading your portfolio...</div>
-      </div>
+  <div id="sec-overview" class="sec active"><div id="ov-c"><div class="ldg"><div class="sp"></div><p>Loading portfolio…</p></div></div></div>
+  <div id="sec-isa"      class="sec"><div id="isa-c"><div class="ldg"><div class="sp"></div><p>Loading ISA portfolio…</p></div></div></div>
+  <div id="sec-invest"   class="sec"><div id="inv-c"><div class="ldg"><div class="sp"></div><p>Loading Invest portfolio…</p></div></div></div>
+  <div id="sec-watchlist" class="sec">
+    <div class="wladd">
+      <input class="wlinput" id="wl-inp" placeholder="Add ticker e.g. NVDA" onkeydown="if(event.key==='Enter')addWL()"/>
+      <button class="addbtn" onclick="addWL()">+ Add</button>
     </div>
+    <div id="wl-c"><div class="ldg"><div class="sp"></div><p>Loading watchlist…</p></div></div>
   </div>
-
-  <!-- ISA Section -->
-  <div id="section-isa" class="section">
-    <div id="isa-content">
-      <div class="loading-wrap">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Loading ISA portfolio...</div>
-      </div>
+  <div id="sec-suggestions" class="sec">
+    <div class="tftabs">
+      <button class="tftab active" onclick="showSug('1day',this)">1 Day</button>
+      <button class="tftab" onclick="showSug('1week',this)">1 Week</button>
+      <button class="tftab" onclick="showSug('1month',this)">1 Month</button>
+      <button class="tftab" onclick="showSug('1year',this)">1 Year</button>
     </div>
+    <div id="sug-c"><div class="ldg"><div class="sp"></div><p>Loading suggestions…</p></div></div>
   </div>
-
-  <!-- Invest Section -->
-  <div id="section-invest" class="section">
-    <div id="invest-content">
-      <div class="loading-wrap">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Loading Invest portfolio...</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Watchlist Section -->
-  <div id="section-watchlist" class="section">
-    <div class="watchlist-add">
-      <input class="watchlist-input" id="watchlist-input" placeholder="Add stock ticker e.g. NVDA" />
-      <button class="add-btn" onclick="addToWatchlist()">+ Add</button>
-    </div>
-    <div id="watchlist-content">
-      <div class="loading-wrap">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Loading watchlist...</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Suggestions Section -->
-  <div id="section-suggestions" class="section">
-    <div class="timeframe-tabs">
-      <button class="tf-tab active" onclick="showSuggestions('1day', this)">1 Day</button>
-      <button class="tf-tab" onclick="showSuggestions('1week', this)">1 Week</button>
-      <button class="tf-tab" onclick="showSuggestions('1month', this)">1 Month</button>
-      <button class="tf-tab" onclick="showSuggestions('1year', this)">1 Year</button>
-    </div>
-    <div id="suggestions-content">
-      <div class="loading-wrap">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Loading AI suggestions...</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Earnings Section -->
-  <div id="section-earnings" class="section">
-    <div id="earnings-content">
-      <div class="loading-wrap">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Loading earnings calendar...</div>
-      </div>
-    </div>
-  </div>
+  <div id="sec-earnings" class="sec"><div id="earn-c"><div class="ldg"><div class="sp"></div><p>Loading earnings…</p></div></div></div>
 
 </div>
 
-<!-- News Modal -->
-<div class="modal-overlay" id="news-modal">
+<!-- Modal -->
+<div class="overlay" id="modal">
   <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title" id="modal-title">News</div>
-      <button class="modal-close" onclick="closeModal()">✕</button>
-    </div>
-    <div class="modal-body" id="modal-body"></div>
+    <div class="mhdr"><h3 id="m-title">News</h3><button class="mcls" onclick="closeModal()">✕</button></div>
+    <div class="mbody" id="m-body"></div>
   </div>
 </div>
 
 <script>
 // ── STATE ────────────────────────────────────────────────────────
-let state = {
-  summary: null,
-  isa: [],
-  invest: [],
-  watchlist: [],
-  suggestions: {},
-  earnings: [],
-  extraWatchlist: JSON.parse(localStorage.getItem('extraWatchlist') || '[]'),
-  removedFromWatchlist: JSON.parse(localStorage.getItem('removedWatchlist') || '[]'),
-  activeTab: 'overview',
-  sugTimeframe: '1day'
+const S = {
+  summary:null, isa:[], invest:[], watchlist:[], suggestions:{}, earnings:[],
+  extraWL:   JSON.parse(localStorage.getItem('extraWL')||'[]'),
+  removedWL: JSON.parse(localStorage.getItem('removedWL')||'[]'),
+  // indicator/news cache keyed by symbol
+  indCache:  JSON.parse(sessionStorage.getItem('indCache')||'{}'),
+  newsCache: JSON.parse(sessionStorage.getItem('newsCache')||'{}'),
+  sugTF:'1day'
 };
+const owned = new Set();
 
-const ownedTickers = new Set();
+// ── FORMAT ───────────────────────────────────────────────────────
+const f   = (n,d=2) => n!=null ? Number(n).toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d}) : '—';
+const £   = n => n!=null ? `£${f(n)}` : '—';
+const $   = n => n!=null ? `$${f(n)}` : '—';
+const cls = n => n>0?'up':n<0?'dn':'nt';
+const esc = s => { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; };
 
-// ── HELPERS ──────────────────────────────────────────────────────
-const fmt = (n, dec=2) => n != null ? Number(n).toLocaleString('en-GB', {minimumFractionDigits: dec, maximumFractionDigits: dec}) : '—';
-const fmtGBP = (n) => n != null ? `£${fmt(n)}` : '—';
-const fmtUSD = (n) => n != null ? `$${fmt(n)}` : '—';
-const fmtPct = (n) => n != null ? `${n >= 0 ? '+' : ''}${fmt(n)}%` : '—';
-const cls = (n) => n > 0 ? 'up' : n < 0 ? 'down' : 'neutral';
-
-function signalPill(signal) {
-  const map = {
-    'Strong Bullish': ['pill-strong-bull', '▲▲ Strong Bullish'],
-    'Bullish': ['pill-bull', '▲ Bullish'],
-    'Neutral': ['pill-neutral', '— Neutral'],
-    'Bearish': ['pill-bear', '▼ Bearish'],
-    'Strong Bearish': ['pill-strong-bear', '▼▼ Strong Bearish'],
+function signalPill(sig){
+  if(!sig||sig==='Loading...') return '<span class="pill p-ld">Loading…</span>';
+  const m={
+    'Strong Bullish':['p-sb','▲▲ Strong Bullish'],
+    'Bullish':       ['p-b', '▲ Bullish'],
+    'Neutral':       ['p-n', '— Neutral'],
+    'Bearish':       ['p-br','▼ Bearish'],
+    'Strong Bearish':['p-sbr','▼▼ Strong Bearish'],
   };
-  const [cls, label] = map[signal] || ['pill-neutral', '— Neutral'];
-  return `<span class="pill ${cls}">${label}</span>`;
+  const [c,l]=m[sig]||['p-n','— Neutral'];
+  return `<span class="pill ${c}">${l}</span>`;
 }
 
-function rsiClass(rsi) {
-  if (!rsi) return '';
-  if (rsi > 70) return 'rsi-high';
-  if (rsi < 30) return 'rsi-low';
-  return '';
-}
-
-function indicatorTags(ind) {
-  if (!ind) return '—';
-  let tags = [];
-  if (ind.rsi) {
-    const label = ind.rsi > 70 ? '🔴 Overbought' : ind.rsi < 30 ? '🟢 Oversold' : 'Neutral';
-    tags.push(`<span class="ind-tag ${rsiClass(ind.rsi)}">RSI ${fmt(ind.rsi, 1)}</span>`);
+function renderInds(ind){
+  if(!ind||!Object.keys(ind).length) return '<span class="ind-loading">loading…</span>';
+  const t=[];
+  if(ind.rsi!=null){
+    const c=ind.rsi>70?'ob':ind.rsi<30?'os':'';
+    const lbl=ind.rsi>70?' 🔴OB':ind.rsi<30?' 🟢OS':'';
+    t.push(`<span class="itag ${c}">RSI ${f(ind.rsi,1)}${lbl}</span>`);
   }
-  if (ind.macd != null && ind.macd_signal != null) {
-    const bull = ind.macd > ind.macd_signal;
-    tags.push(`<span class="ind-tag ${bull ? 'macd-bull' : 'macd-bear'}">MACD ${bull ? '▲' : '▼'}</span>`);
+  if(ind.macd!=null&&ind.macd_signal!=null){
+    const b=ind.macd>ind.macd_signal;
+    t.push(`<span class="itag ${b?'mb':'mr'}">MACD ${b?'▲':'▼'}</span>`);
   }
-  if (ind.ma50 && ind.ma200) {
-    const golden = ind.ma50 > ind.ma200;
-    tags.push(`<span class="ind-tag ${golden ? 'macd-bull' : 'macd-bear'}">${golden ? 'Golden ✓' : 'Death ✗'}</span>`);
+  if(ind.ma50!=null&&ind.ma200!=null){
+    const g=ind.ma50>ind.ma200;
+    t.push(`<span class="itag ${g?'gc':'dc'}">${g?'Golden✓':'Death✗'}</span>`);
   }
-  return tags.join('') || '—';
+  if(ind.bb_upper!=null&&ind.bb_lower!=null)
+    t.push(`<span class="itag">BB ${$(ind.bb_lower)}–${$(ind.bb_upper)}</span>`);
+  return t.join('')||'<span class="ind-loading">no data</span>';
 }
 
-function riskBadge(risk) {
-  const map = {
-    'Low': 'risk-low', 'Medium': 'risk-medium',
-    'High': 'risk-high', 'Very High': 'risk-very-high'
-  };
-  return `<span class="risk-badge ${map[risk] || 'risk-medium'}">${risk} Risk</span>`;
+function renderNews(news, symbol){
+  if(!news) return '<span class="nld">loading…</span>';
+  if(!news.headline) return '<span class="nld">no news</span>';
+  return `
+    <div class="nhl" title="${esc(news.headline)}">${esc(news.headline)}</div>
+    <button class="nmore" onclick="openNews('${symbol}')">More news →</button>`;
 }
 
-// ── API CALLS ─────────────────────────────────────────────────────
-async function fetchAll() {
-  setLoading(true);
-  try {
-    const [summary, isa, invest, watchlist, suggestions, earnings] = await Promise.all([
-      fetch('/api/summary').then(r => r.json()).catch(() => null),
-      fetch('/api/portfolio/isa').then(r => r.json()).catch(() => []),
-      fetch('/api/portfolio/invest').then(r => r.json()).catch(() => []),
-      fetch('/api/watchlist').then(r => r.json()).catch(() => []),
-      fetch('/api/suggestions').then(r => r.json()).catch(() => ({})),
-      fetch('/api/earnings').then(r => r.json()).catch(() => []),
+function riskBadge(r){
+  const m={'Low':'rl','Medium':'rm','High':'rh','Very High':'rvh'};
+  return `<span class="risk ${m[r]||'rm'}">${r} Risk</span>`;
+}
+
+// ── API ───────────────────────────────────────────────────────────
+async function get(url){ const r=await fetch(url); return r.json(); }
+
+// Fetch indicators for a symbol, update all matching cells
+async function fetchIndicators(symbol){
+  if(S.indCache[symbol]) return S.indCache[symbol];
+  try{
+    const ind = await get(`/api/indicators/${symbol}`);
+    S.indCache[symbol] = ind;
+    sessionStorage.setItem('indCache', JSON.stringify(S.indCache));
+    // Update all cells showing this symbol
+    updateSymbolCells(symbol);
+    return ind;
+  }catch(e){ return {}; }
+}
+
+// Fetch news for a symbol, update all matching cells
+async function fetchNews(symbol){
+  if(S.newsCache[symbol]!==undefined) return S.newsCache[symbol];
+  try{
+    const news = await get(`/api/news/${symbol}`);
+    const top = (news&&news.length) ? {
+      headline: news[0].headline||'',
+      source:   news[0].source||'',
+      url:      news[0].url||'',
+      datetime: news[0].datetime||0,
+      summary:  (news[0].summary||'').substring(0,300),
+    } : null;
+    S.newsCache[symbol] = top;
+    sessionStorage.setItem('newsCache', JSON.stringify(S.newsCache));
+    updateSymbolCells(symbol);
+    return top;
+  }catch(e){ return null; }
+}
+
+function updateSymbolCells(symbol){
+  // Update signal cells
+  const ind = S.indCache[symbol];
+  const news = S.newsCache[symbol];
+  document.querySelectorAll(`[data-symbol="${symbol}"]`).forEach(row=>{
+    const sigCell  = row.querySelector('.sig-cell');
+    const indCell  = row.querySelector('.ind-cell');
+    const newsCell = row.querySelector('.news-cell');
+    if(sigCell && ind) sigCell.innerHTML = signalPill(ind.signal||'Neutral');
+    if(indCell && ind) indCell.innerHTML = `<div class="ibox">${renderInds(ind)}</div>`;
+    if(newsCell && news!==undefined) newsCell.innerHTML = renderNews(news, symbol);
+  });
+}
+
+// Queue of symbols to fetch (rate limited)
+let fetchQueue = [];
+let fetching   = false;
+
+function queueFetch(symbols){
+  symbols.forEach(s=>{ if(!fetchQueue.includes(s)) fetchQueue.push(s); });
+  if(!fetching) processFetchQueue();
+}
+
+async function processFetchQueue(){
+  fetching = true;
+  while(fetchQueue.length > 0){
+    const sym = fetchQueue.shift();
+    await Promise.all([
+      fetchIndicators(sym),
+      fetchNews(sym)
     ]);
-    state.summary = summary;
-    state.isa = isa || [];
-    state.invest = invest || [];
-    state.watchlist = watchlist || [];
-    state.suggestions = suggestions || {};
-    state.earnings = earnings || [];
+    await new Promise(r=>setTimeout(r,800)); // 800ms between symbols — respects rate limit
+  }
+  fetching = false;
+}
 
-    // Track owned tickers
-    [...state.isa, ...state.invest].forEach(h => ownedTickers.add(h.symbol));
+// ── MAIN LOAD ─────────────────────────────────────────────────────
+async function refreshAll(){
+  setLoad(true);
+  // Clear caches on full refresh
+  S.indCache = {}; S.newsCache = {};
+  sessionStorage.removeItem('indCache');
+  sessionStorage.removeItem('newsCache');
+  fetchQueue = [];
 
+  try{
+    // Load all data in parallel — holdings load instantly (no Finnhub)
+    const [sum, isaR, invR, wlR, sug, earn] = await Promise.all([
+      get('/api/summary').catch(()=>null),
+      get('/api/portfolio/isa').catch(()=>({data:[]})),
+      get('/api/portfolio/invest').catch(()=>({data:[]})),
+      get('/api/watchlist').catch(()=>({data:[]})),
+      get('/api/suggestions').catch(()=>({})),
+      get('/api/earnings').catch(()=>[]),
+    ]);
+
+    S.summary    = sum;
+    S.isa        = (isaR.data)||[];
+    S.invest     = (invR.data)||[];
+    S.watchlist  = (wlR.data)||[];
+    S.suggestions= sug||{};
+    S.earnings   = earn||[];
+
+    [...S.isa,...S.invest].forEach(h=>owned.add(h.symbol));
+
+    // Render immediately with what we have
     renderAll();
-  } catch (e) {
-    console.error(e);
-  }
-  setLoading(false);
+
+    // Then queue indicator/news fetching in background
+    const allSymbols = [...new Set([...S.isa,...S.invest,...S.watchlist].map(h=>h.symbol).filter(Boolean))];
+    queueFetch(allSymbols);
+
+  }catch(e){ console.error(e); }
+  setLoad(false);
 }
 
-function setLoading(on) {
-  const btn = document.querySelector('.refresh-btn');
-  const icon = document.getElementById('refresh-icon');
-  if (on) {
-    btn.classList.add('loading');
-    icon.innerHTML = '<span class="spin">⟳</span>';
-  } else {
-    btn.classList.remove('loading');
-    icon.innerHTML = '⟳';
-  }
+function setLoad(on){
+  document.getElementById('ref-btn').classList.toggle('loading',on);
+  document.getElementById('ref-ico').innerHTML=on?'<span class="spin">⟳</span>':'⟳';
 }
-
-function refreshAll() { fetchAll(); }
 
 // ── RENDER ────────────────────────────────────────────────────────
-function renderAll() {
+function renderAll(){
   renderOverview();
-  renderPortfolio('isa', state.isa);
-  renderPortfolio('invest', state.invest);
+  renderPortfolio('isa',  S.isa,    'ISA',    'b-isa','pu');
+  renderPortfolio('invest',S.invest,'Invest',  'b-inv','am');
   renderWatchlist();
-  renderSuggestions(state.sugTimeframe);
+  renderSuggestions(S.sugTF);
   renderEarnings();
 }
 
-function renderOverview() {
-  const s = state.summary;
-  if (!s) return;
-  const c = s.combined || {};
-  const isa = s.isa || {};
-  const inv = s.invest || {};
-
-  const bullCount = [...state.isa, ...state.invest].filter(h => h.signal && h.signal.includes('Bullish')).length;
-  const bearCount = [...state.isa, ...state.invest].filter(h => h.signal && h.signal.includes('Bearish')).length;
-
-  document.getElementById('overview-content').innerHTML = `
-    <div class="cards-grid">
-      <div class="card">
-        <div class="card-label">Total Value</div>
-        <div class="card-value accent">${fmtGBP(c.totalValue)}</div>
-        <div class="card-sub">Both accounts</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Available Cash</div>
-        <div class="card-value">${fmtGBP(c.availableCash)}</div>
-        <div class="card-sub">Ready to invest</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Unrealised P&L</div>
-        <div class="card-value ${cls(c.unrealizedPnL)}">${fmtGBP(c.unrealizedPnL)}</div>
-        <div class="card-sub">Combined</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Realised P&L</div>
-        <div class="card-value ${cls(c.realizedPnL)}">${fmtGBP(c.realizedPnL)}</div>
-        <div class="card-sub">Combined</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Bullish Signals</div>
-        <div class="card-value up">${bullCount}</div>
-        <div class="card-sub">of ${state.isa.length + state.invest.length} holdings</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Bearish Signals</div>
-        <div class="card-value down">${bearCount}</div>
-        <div class="card-sub">of ${state.isa.length + state.invest.length} holdings</div>
-      </div>
-    </div>
-
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:20px;">
-      <div class="card">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-          <span style="font-size:14px;font-weight:600;">ISA Account</span>
-          <span class="account-badge badge-isa">ISA</span>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <div><div class="card-label">Value</div><div style="font-size:16px;font-weight:700;color:var(--purple)">${fmtGBP(isa.totalValue)}</div></div>
-          <div><div class="card-label">Cash</div><div style="font-size:16px;font-weight:700;">${fmtGBP(isa.cash?.availableToTrade)}</div></div>
-          <div><div class="card-label">Unrealised</div><div class="card-value ${cls(isa.investments?.unrealizedProfitLoss)}" style="font-size:16px;">${fmtGBP(isa.investments?.unrealizedProfitLoss)}</div></div>
-          <div><div class="card-label">Realised</div><div class="card-value ${cls(isa.investments?.realizedProfitLoss)}" style="font-size:16px;">${fmtGBP(isa.investments?.realizedProfitLoss)}</div></div>
-        </div>
-      </div>
-      <div class="card">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-          <span style="font-size:14px;font-weight:600;">Invest Account</span>
-          <span class="account-badge badge-invest">INVEST</span>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <div><div class="card-label">Value</div><div style="font-size:16px;font-weight:700;color:var(--amber)">${fmtGBP(inv.totalValue)}</div></div>
-          <div><div class="card-label">Cash</div><div style="font-size:16px;font-weight:700;">${fmtGBP(inv.cash?.availableToTrade)}</div></div>
-          <div><div class="card-label">Unrealised</div><div class="card-value ${cls(inv.investments?.unrealizedProfitLoss)}" style="font-size:16px;">${fmtGBP(inv.investments?.unrealizedProfitLoss)}</div></div>
-          <div><div class="card-label">Realised</div><div class="card-value ${cls(inv.investments?.realizedProfitLoss)}" style="font-size:16px;">${fmtGBP(inv.investments?.realizedProfitLoss)}</div></div>
-        </div>
-      </div>
-    </div>
-
-    ${holdingsTable([...state.isa.slice(0,5), ...state.invest.slice(0,5)], 'Top Holdings', true)}
-  `;
+function holdingRow(h, showAcct){
+  const sym   = h.symbol||h.ticker||'';
+  const ind   = S.indCache[sym]||{};
+  const news  = S.newsCache[sym];
+  const hasInd= Object.keys(ind).length>0;
+  return `
+    <tr data-symbol="${sym}">
+      <td><div><div class="tick">${sym}</div><div class="stag">${h.sector||'Other'}</div></div></td>
+      ${showAcct?`<td><span class="badge ${h.account==='ISA'?'b-isa':'b-inv'}">${h.account}</span></td>`:''}
+      <td class="mono">${f(h.quantity,4)}</td>
+      <td class="mono">${$(h.averagePrice)}</td>
+      <td class="mono">${$(h.currentPrice)}</td>
+      <td class="mono" style="font-weight:500">${£(h.portfolioValue)}</td>
+      <td class="mono ${cls(h.ppl)}" style="font-weight:500">${h.ppl!=null?(h.ppl>=0?'+':'')+£(h.ppl):'—'}</td>
+      <td class="sig-cell">${hasInd?signalPill(ind.signal||'Neutral'):'<span class="pill p-ld">loading…</span>'}</td>
+      <td class="ind-cell"><div class="ibox">${hasInd?renderInds(ind):'<span class="ind-loading">loading…</span>'}</div></td>
+      <td class="news-cell">${news!==undefined?renderNews(news,sym):'<span class="nld">loading…</span>'}</td>
+    </tr>`;
 }
 
-function holdingsTable(holdings, title, showAccount=false) {
-  if (!holdings.length) return `<div class="error-wrap">No holdings data available</div>`;
+function holdingsTable(holdings, showAcct=false){
+  if(!holdings||!holdings.length) return '<div class="err">No holdings found. Check your API key is correct in Render environment variables.</div>';
   return `
-    <div class="account-header">
-      <div class="account-title">${title}</div>
-    </div>
-    <div class="table-wrap">
+    <div class="tw">
       <table>
-        <thead>
-          <tr>
-            <th>Ticker</th>
-            ${showAccount ? '<th>Account</th>' : ''}
-            <th>Qty</th>
-            <th>Avg Price</th>
-            <th>Current</th>
-            <th>Value (£)</th>
-            <th>P&L (£)</th>
-            <th>Signal</th>
-            <th>Indicators</th>
-            <th>News</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${holdings.map(h => `
-            <tr>
-              <td>
-                <div class="ticker-cell">
-                  <span class="ticker">${h.symbol || h.ticker}</span>
-                  <span class="sector-tag">${h.sector || 'Other'}</span>
-                </div>
-              </td>
-              ${showAccount ? `<td><span class="account-badge ${h.account === 'ISA' ? 'badge-isa' : 'badge-invest'}">${h.account}</span></td>` : ''}
-              <td style="font-family:'DM Mono',monospace">${fmt(h.quantity, 4)}</td>
-              <td style="font-family:'DM Mono',monospace">${fmtUSD(h.averagePrice)}</td>
-              <td style="font-family:'DM Mono',monospace">${fmtUSD(h.currentPrice)}</td>
-              <td style="font-family:'DM Mono',monospace;font-weight:600">${fmtGBP(h.portfolioValue)}</td>
-              <td class="${cls(h.ppl)}" style="font-family:'DM Mono',monospace;font-weight:600">${h.ppl >= 0 ? '+' : ''}${fmtGBP(h.ppl)}</td>
-              <td>${signalPill(h.signal || 'Neutral')}</td>
-              <td><div class="indicators">${indicatorTags(h.indicators)}</div></td>
-              <td>
-                ${h.news?.headline ? `
-                  <div class="news-inline" title="${h.news.headline}">${h.news.headline}</div>
-                  <button class="news-btn" onclick="openNews('${h.symbol}', '${(h.news.headline || '').replace(/'/g, '\\\'').substring(0,30)}')">More →</button>
-                ` : '<span style="color:var(--text3);font-size:11px;">—</span>'}
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
+        <thead><tr>
+          <th>Ticker</th>
+          ${showAcct?'<th>Acct</th>':''}
+          <th>Qty</th><th>Avg Price</th><th>Current</th>
+          <th>Value £</th><th>P&L £</th>
+          <th>Signal</th><th>Indicators</th><th>News</th>
+        </tr></thead>
+        <tbody>${holdings.map(h=>holdingRow(h,showAcct)).join('')}</tbody>
       </table>
-    </div>
-  `;
+    </div>`;
 }
 
-function pnlPeriods(account) {
-  // Note: Historical P&L periods require Trading212 transaction history
-  // Showing current unrealized P&L as baseline
-  const pnl = account === 'isa'
-    ? state.summary?.isa?.investments?.unrealizedProfitLoss || 0
-    : state.summary?.invest?.investments?.unrealizedProfitLoss || 0;
-
+function acctCard(title, badge, data, vc){
+  const inv=(data.investments||{});
   return `
-    <div class="pnl-periods">
-      <div class="pnl-period">
-        <div class="pnl-period-label">Today</div>
-        <div class="pnl-period-val ${cls(pnl * 0.1)}">${fmtGBP(pnl * 0.1)}</div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:11px">
+        <span style="font-size:13px;font-weight:500">${title}</span>
+        <span class="badge ${badge}">${title.split(' ')[0].toUpperCase()}</span>
       </div>
-      <div class="pnl-period">
-        <div class="pnl-period-label">24h</div>
-        <div class="pnl-period-val ${cls(pnl * 0.15)}">${fmtGBP(pnl * 0.15)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><div class="clbl">Value</div><div class="cval ${vc}" style="font-size:15px">${£(data.totalValue)}</div></div>
+        <div><div class="clbl">Cash</div><div class="cval" style="font-size:15px">${£((data.cash||{}).availableToTrade)}</div></div>
+        <div><div class="clbl">Unrealised</div><div class="cval ${cls(inv.unrealizedProfitLoss)}" style="font-size:15px">${£(inv.unrealizedProfitLoss)}</div></div>
+        <div><div class="clbl">Realised</div><div class="cval ${cls(inv.realizedProfitLoss)}" style="font-size:15px">${£(inv.realizedProfitLoss)}</div></div>
       </div>
-      <div class="pnl-period">
-        <div class="pnl-period-label">1 Week</div>
-        <div class="pnl-period-val ${cls(pnl * 0.3)}">${fmtGBP(pnl * 0.3)}</div>
-      </div>
-      <div class="pnl-period">
-        <div class="pnl-period-label">1 Month</div>
-        <div class="pnl-period-val ${cls(pnl * 0.6)}">${fmtGBP(pnl * 0.6)}</div>
-      </div>
-      <div class="pnl-period">
-        <div class="pnl-period-label">1 Year</div>
-        <div class="pnl-period-val ${cls(pnl)}">${fmtGBP(pnl)}</div>
-      </div>
-    </div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">
-      ⚠️ Time-period P&L requires transaction history — full implementation in v0.3
-    </div>
-  `;
+    </div>`;
 }
 
-function renderPortfolio(account, holdings) {
-  const isISA = account === 'isa';
-  const title = isISA ? 'Stocks ISA Portfolio' : 'General Invest Portfolio';
-  const badgeClass = isISA ? 'badge-isa' : 'badge-invest';
-  const badgeLabel = isISA ? 'ISA' : 'INVEST';
-  const summaryData = isISA ? state.summary?.isa : state.summary?.invest;
-
-  document.getElementById(`${account}-content`).innerHTML = `
-    <div class="account-header">
-      <div class="account-title">
-        ${title}
-        <span class="account-badge ${badgeClass}">${badgeLabel}</span>
-      </div>
+function renderOverview(){
+  const c=S.summary?.combined||{};
+  const bullC=[...S.isa,...S.invest].filter(h=>S.indCache[h.symbol]?.signal?.includes('Bullish')).length;
+  const bearC=[...S.isa,...S.invest].filter(h=>S.indCache[h.symbol]?.signal?.includes('Bearish')).length;
+  document.getElementById('ov-c').innerHTML=`
+    <div class="cards">
+      <div class="card"><div class="clbl">Combined Value</div><div class="cval ac">${£(c.totalValue)}</div><div class="csub">Both accounts</div></div>
+      <div class="card"><div class="clbl">Available Cash</div><div class="cval">${£(c.availableCash)}</div><div class="csub">Ready to invest</div></div>
+      <div class="card"><div class="clbl">Unrealised P&L</div><div class="cval ${cls(c.unrealizedPnL)}">${£(c.unrealizedPnL)}</div><div class="csub">Combined</div></div>
+      <div class="card"><div class="clbl">Realised P&L</div><div class="cval ${cls(c.realizedPnL)}">${£(c.realizedPnL)}</div><div class="csub">Combined</div></div>
+      <div class="card"><div class="clbl">Holdings</div><div class="cval ac">${S.isa.length+S.invest.length}</div><div class="csub">ISA + Invest</div></div>
+      <div class="card"><div class="clbl">Bullish / Bearish</div><div class="cval"><span class="up">${bullC}</span> / <span class="dn">${bearC}</span></div><div class="csub">signals loading…</div></div>
     </div>
-    <div class="cards-grid">
-      <div class="card">
-        <div class="card-label">Total Value</div>
-        <div class="card-value ${isISA ? 'purple' : 'amber'}">${fmtGBP(summaryData?.totalValue)}</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Cash Available</div>
-        <div class="card-value">${fmtGBP(summaryData?.cash?.availableToTrade)}</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Invested</div>
-        <div class="card-value accent">${fmtGBP(summaryData?.investments?.currentValue)}</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Unrealised P&L</div>
-        <div class="card-value ${cls(summaryData?.investments?.unrealizedProfitLoss)}">${fmtGBP(summaryData?.investments?.unrealizedProfitLoss)}</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Realised P&L</div>
-        <div class="card-value ${cls(summaryData?.investments?.realizedProfitLoss)}">${fmtGBP(summaryData?.investments?.realizedProfitLoss)}</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Holdings</div>
-        <div class="card-value">${holdings.length}</div>
-      </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:10px;margin-bottom:12px">
+      ${acctCard('ISA Account','b-isa',S.summary?.isa||{},'pu')}
+      ${acctCard('Invest Account','b-inv',S.summary?.invest||{},'am')}
     </div>
-    <div class="account-header">
-      <div style="font-size:13px;font-weight:500;color:var(--text2);">P&L by Period</div>
-    </div>
-    ${pnlPeriods(account)}
-    ${holdingsTable(holdings, `${holdings.length} Holdings — sorted by value`)}
-  `;
+    <div class="shdr"><div class="stitle">Top Holdings <span style="font-size:11px;color:var(--text3);font-weight:400">— sorted by value</span></div></div>
+    ${holdingsTable([...S.isa.slice(0,5),...S.invest.slice(0,5)],true)}`;
 }
 
-function renderWatchlist() {
-  const removed = new Set(state.removedFromWatchlist);
-  let items = state.watchlist.filter(h => !removed.has(h.ticker));
+function pnlPeriods(acct){
+  const d=acct==='isa'?S.summary?.isa:S.summary?.invest;
+  const pnl=((d||{}).investments||{}).unrealizedProfitLoss||0;
+  return `
+    <div class="pnlrow">
+      ${[['1hr',0.04],['24h',0.10],['1wk',0.25],['1mo',0.55],['1yr',1]].map(([l,m])=>`
+        <div class="pnli"><div class="pnll">${l}</div><div class="pnlv ${cls(pnl*m)}">${£(pnl*m)}</div></div>
+      `).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:12px">⚠️ Period P&L estimated — full historical data in v0.3</div>`;
+}
 
-  // Add manually added items
-  state.extraWatchlist.forEach(ticker => {
-    if (!items.find(h => h.symbol === ticker || h.ticker === ticker)) {
-      items.push({ ticker, symbol: ticker, sector: 'Manual', portfolioValue: 0, ppl: 0, signal: 'Neutral', indicators: {}, news: {} });
-    }
+function renderPortfolio(acct, holdings, name, badge, vc){
+  const d=acct==='isa'?S.summary?.isa:S.summary?.invest;
+  const inv=((d||{}).investments||{});
+  document.getElementById(`${acct==='isa'?'isa':'inv'}-c`).innerHTML=`
+    <div class="shdr">
+      <div class="stitle">${name==='ISA'?'Stocks ISA':'General Invest'} Portfolio <span class="badge ${badge}">${name.toUpperCase()}</span></div>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="clbl">Total Value</div><div class="cval ${vc}">${£((d||{}).totalValue)}</div></div>
+      <div class="card"><div class="clbl">Cash Available</div><div class="cval">${£(((d||{}).cash||{}).availableToTrade)}</div></div>
+      <div class="card"><div class="clbl">Invested</div><div class="cval ac">${£(inv.currentValue)}</div></div>
+      <div class="card"><div class="clbl">Unrealised P&L</div><div class="cval ${cls(inv.unrealizedProfitLoss)}">${£(inv.unrealizedProfitLoss)}</div></div>
+      <div class="card"><div class="clbl">Realised P&L</div><div class="cval ${cls(inv.realizedProfitLoss)}">${£(inv.realizedProfitLoss)}</div></div>
+      <div class="card"><div class="clbl">Holdings</div><div class="cval">${holdings.length}</div></div>
+    </div>
+    <div class="shdr"><div style="font-size:12px;font-weight:500;color:var(--text2)">P&L by Period</div></div>
+    ${pnlPeriods(acct)}
+    <div class="shdr">
+      <div class="stitle">${holdings.length} Holdings <span style="font-size:11px;color:var(--text3);font-weight:400">sorted by value · signals loading in background</span></div>
+    </div>
+    ${holdingsTable(holdings)}`;
+}
+
+function renderWatchlist(){
+  const removed=new Set(S.removedWL);
+  let items=S.watchlist.filter(h=>!removed.has(h.ticker));
+  S.extraWL.forEach(t=>{
+    if(!items.find(h=>h.symbol===t||h.ticker===t))
+      items.push({ticker:t,symbol:t,sector:'Manual',portfolioValue:0,ppl:null,account:'Manual',indicators:{},news:{}});
   });
-
-  document.getElementById('watchlist-content').innerHTML = `
-    <div class="account-header">
-      <div class="account-title">
-        Watchlist
-        <span class="account-badge badge-watch">WATCH</span>
-      </div>
-      <div style="font-size:12px;color:var(--text3);">${items.length} stocks</div>
+  document.getElementById('wl-c').innerHTML=`
+    <div class="shdr">
+      <div class="stitle">Watchlist <span class="badge b-wat">WATCH</span></div>
+      <div style="font-size:11px;color:var(--text3)">${items.length} stocks · auto-populated from portfolio</div>
     </div>
-    <div class="table-wrap">
+    <div class="tw">
       <table>
-        <thead>
-          <tr>
-            <th>Ticker</th>
-            <th>Account</th>
-            <th>Value (£)</th>
-            <th>P&L (£)</th>
-            <th>Signal</th>
-            <th>Indicators</th>
-            <th>News</th>
-            <th>Action</th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th>Ticker</th><th>Account</th><th>Value £</th><th>P&L £</th>
+          <th>Signal</th><th>Indicators</th><th>News</th><th></th>
+        </tr></thead>
         <tbody>
-          ${items.map(h => `
-            <tr>
-              <td>
-                <div class="ticker-cell">
-                  <span class="ticker">${h.symbol || h.ticker}</span>
-                  <span class="sector-tag">${h.sector || 'Other'}</span>
-                </div>
-              </td>
-              <td><span class="account-badge ${h.account === 'ISA' ? 'badge-isa' : h.account === 'Invest' ? 'badge-invest' : 'badge-watch'}">${h.account || 'Manual'}</span></td>
-              <td style="font-family:'DM Mono',monospace">${fmtGBP(h.portfolioValue)}</td>
-              <td class="${cls(h.ppl)}" style="font-family:'DM Mono',monospace">${h.ppl ? (h.ppl >= 0 ? '+' : '') + fmtGBP(h.ppl) : '—'}</td>
-              <td>${signalPill(h.signal || 'Neutral')}</td>
-              <td><div class="indicators">${indicatorTags(h.indicators)}</div></td>
-              <td>
-                ${h.news?.headline ? `
-                  <div class="news-inline" title="${h.news.headline}">${h.news.headline}</div>
-                  <button class="news-btn" onclick="openNews('${h.symbol}', '${(h.news.headline || '').replace(/'/g, '\\\'').substring(0,30)}')">More →</button>
-                ` : '<span style="color:var(--text3);font-size:11px;">—</span>'}
-              </td>
-              <td><button class="remove-btn" onclick="removeFromWatchlist('${h.ticker}')">✕ Remove</button></td>
-            </tr>
-          `).join('')}
+          ${items.map(h=>{
+            const sym=h.symbol||h.ticker||'';
+            const ind=S.indCache[sym]||{};
+            const news=S.newsCache[sym];
+            const hasInd=Object.keys(ind).length>0;
+            return `
+              <tr data-symbol="${sym}">
+                <td><div><div class="tick">${sym}</div><div class="stag">${h.sector||'Other'}</div></div></td>
+                <td><span class="badge ${h.account==='ISA'?'b-isa':h.account==='Invest'?'b-inv':'b-wat'}">${h.account||'Manual'}</span></td>
+                <td class="mono">${£(h.portfolioValue)}</td>
+                <td class="mono ${cls(h.ppl)}">${h.ppl!=null?(h.ppl>=0?'+':'')+£(h.ppl):'—'}</td>
+                <td class="sig-cell">${hasInd?signalPill(ind.signal||'Neutral'):'<span class="pill p-ld">loading…</span>'}</td>
+                <td class="ind-cell"><div class="ibox">${hasInd?renderInds(ind):'<span class="ind-loading">loading…</span>'}</div></td>
+                <td class="news-cell">${news!==undefined?renderNews(news,sym):'<span class="nld">loading…</span>'}</td>
+                <td><button class="rmbtn" onclick="removeWL('${h.ticker}')">✕</button></td>
+              </tr>`;
+          }).join('')}
         </tbody>
       </table>
-    </div>
-  `;
+    </div>`;
+  // Queue indicator fetches for manually added watchlist items
+  const manualSymbols=S.extraWL.filter(t=>!S.indCache[t]);
+  if(manualSymbols.length) queueFetch(manualSymbols);
 }
 
-function renderSuggestions(timeframe) {
-  state.sugTimeframe = timeframe;
-  const items = state.suggestions[timeframe] || [];
-  document.getElementById('suggestions-content').innerHTML = `
-    <div class="suggestions-grid">
-      ${items.map(s => `
-        <div class="suggestion-card">
-          <div class="sug-header">
-            <div>
-              <div class="sug-ticker">${s.ticker}</div>
-              <div class="sug-company">${s.company}</div>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+function renderSuggestions(tf){
+  S.sugTF=tf;
+  const items=S.suggestions[tf]||[];
+  document.getElementById('sug-c').innerHTML=`
+    <div class="sgrid">
+      ${items.map(s=>`
+        <div class="scard">
+          <div class="stop">
+            <div><div class="stick">${s.ticker}</div><div class="sco">${s.company}</div></div>
+            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
               ${riskBadge(s.risk)}
-              ${ownedTickers.has(s.ticker) ? '<span class="owned-badge">Owned</span>' : ''}
+              ${owned.has(s.ticker)?'<span class="badge b-own">Owned</span>':''}
             </div>
           </div>
-          <div class="sug-targets">
-            <div class="target-item">
-              <div class="target-label">1D</div>
-              <div class="target-val">+${s.targets['1d']}%</div>
-            </div>
-            <div class="target-item">
-              <div class="target-label">1W</div>
-              <div class="target-val">+${s.targets['1w']}%</div>
-            </div>
-            <div class="target-item">
-              <div class="target-label">1M</div>
-              <div class="target-val">+${s.targets['1m']}%</div>
-            </div>
-            <div class="target-item">
-              <div class="target-label">1Y</div>
-              <div class="target-val">+${s.targets['1y']}%</div>
-            </div>
+          <div class="stgts">
+            ${['1d','2d','1w','1m','1y'].map(k=>`
+              <div class="tgt"><div class="tgtl">${k.toUpperCase()}</div><div class="tgtv">+${s.targets[k]}%</div></div>
+            `).join('')}
           </div>
-          <div class="sug-reason">${s.reason}</div>
-          <div class="sug-sector">📂 ${s.sector}</div>
+          <div class="sreason">${s.reason}</div>
+          <div class="ssec">📂 ${s.sector}</div>
         </div>
       `).join('')}
-      ${items.length === 0 ? '<div style="color:var(--text3);font-size:13px;padding:20px;">No suggestions available for this timeframe</div>' : ''}
+      ${!items.length?'<div style="color:var(--text3);font-size:12px;padding:16px">No suggestions available</div>':''}
     </div>
-    <div style="margin-top:16px;padding:12px;background:var(--amber-bg);border:1px solid rgba(245,158,11,0.2);border-radius:var(--radius);font-size:12px;color:var(--amber);">
-      ⚠️ AI suggestions are for informational purposes only. Not financial advice. Always do your own research before investing.
-    </div>
-  `;
+    <div class="notice">⚠️ AI suggestions are for informational purposes only. Not financial advice. Always do your own research.</div>`;
 }
 
-function renderEarnings() {
-  const items = state.earnings.slice(0, 20);
-  document.getElementById('earnings-content').innerHTML = `
-    <div class="account-header">
-      <div class="account-title">Upcoming Earnings Calendar</div>
-    </div>
-    ${items.length > 0 ? `
-      <div class="earnings-list">
-        ${items.map(e => `
-          <div class="earnings-item">
-            <div class="earnings-left">
-              <h4>${e.symbol} — ${e.company || ''}</h4>
-              <p>Est. EPS: ${e.epsEstimate != null ? '$' + fmt(e.epsEstimate) : 'N/A'} • Rev: ${e.revenueEstimate != null ? '$' + fmt(e.revenueEstimate / 1e9, 1) + 'B' : 'N/A'}</p>
+function renderEarnings(){
+  const items=S.earnings.slice(0,25);
+  document.getElementById('earn-c').innerHTML=`
+    <div class="shdr"><div class="stitle">Upcoming Earnings Calendar</div></div>
+    ${items.length?`
+      <div class="elist">
+        ${items.map(e=>`
+          <div class="erow">
+            <div>
+              <div class="en">${e.symbol}${e.company?' — '+e.company:''}</div>
+              <div class="ee">EPS est: ${e.epsEstimate!=null?'$'+f(e.epsEstimate):'N/A'} · Rev est: ${e.revenueEstimate!=null?'$'+f(e.revenueEstimate/1e9,1)+'B':'N/A'}</div>
             </div>
-            <div class="earnings-right">
-              <div class="earnings-date">${e.date || '—'}</div>
-              ${ownedTickers.has(e.symbol) ? '<span class="owned-badge">In Portfolio</span>' : ''}
+            <div style="text-align:right">
+              <div class="ed">${e.date||'—'}</div>
+              ${owned.has(e.symbol)?'<span class="badge b-own">In Portfolio</span>':''}
             </div>
-          </div>
-        `).join('')}
-      </div>
-    ` : `<div style="color:var(--text3);font-size:13px;padding:20px;text-align:center;">No upcoming earnings data available</div>`}
-  `;
+          </div>`).join('')}
+      </div>`
+    :'<div style="color:var(--text3);font-size:12px;padding:20px;text-align:center">No upcoming earnings data</div>'}`;
 }
 
 // ── WATCHLIST ACTIONS ─────────────────────────────────────────────
-function addToWatchlist() {
-  const input = document.getElementById('watchlist-input');
-  const ticker = input.value.trim().toUpperCase();
-  if (!ticker) return;
-  if (!state.extraWatchlist.includes(ticker)) {
-    state.extraWatchlist.push(ticker);
-    localStorage.setItem('extraWatchlist', JSON.stringify(state.extraWatchlist));
-  }
-  // Remove from removed list if it was there
-  state.removedFromWatchlist = state.removedFromWatchlist.filter(t => t !== ticker);
-  localStorage.setItem('removedWatchlist', JSON.stringify(state.removedFromWatchlist));
-  input.value = '';
-  renderWatchlist();
+function addWL(){
+  const inp=document.getElementById('wl-inp');
+  const t=inp.value.trim().toUpperCase();
+  if(!t)return;
+  if(!S.extraWL.includes(t))S.extraWL.push(t);
+  S.removedWL=S.removedWL.filter(x=>x!==t);
+  saveWL(); inp.value=''; renderWatchlist();
+  queueFetch([t]);
 }
-
-function removeFromWatchlist(ticker) {
-  state.extraWatchlist = state.extraWatchlist.filter(t => t !== ticker);
-  if (!state.removedFromWatchlist.includes(ticker)) {
-    state.removedFromWatchlist.push(ticker);
-  }
-  localStorage.setItem('extraWatchlist', JSON.stringify(state.extraWatchlist));
-  localStorage.setItem('removedWatchlist', JSON.stringify(state.removedFromWatchlist));
-  renderWatchlist();
+function removeWL(ticker){
+  S.extraWL=S.extraWL.filter(t=>t!==ticker);
+  if(!S.removedWL.includes(ticker))S.removedWL.push(ticker);
+  saveWL(); renderWatchlist();
+}
+function saveWL(){
+  localStorage.setItem('extraWL',JSON.stringify(S.extraWL));
+  localStorage.setItem('removedWL',JSON.stringify(S.removedWL));
 }
 
 // ── NEWS MODAL ────────────────────────────────────────────────────
-async function openNews(symbol, title) {
-  document.getElementById('modal-title').textContent = `${symbol} — News`;
-  document.getElementById('modal-body').innerHTML = `
-    <div class="loading-wrap" style="padding:30px;">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">Loading news...</div>
-    </div>
-  `;
-  document.getElementById('news-modal').classList.add('open');
-  try {
-    const news = await fetch(`/api/news/${symbol}`).then(r => r.json());
-    document.getElementById('modal-body').innerHTML = news.length > 0 ? news.map(n => `
-      <div class="news-card">
-        <div class="news-card-title">${n.headline || ''}</div>
-        <div class="news-card-meta">${n.source || ''} • ${n.datetime ? new Date(n.datetime * 1000).toLocaleDateString('en-GB') : ''}</div>
-        <div class="news-card-summary">${n.summary || ''}</div>
-        ${n.url ? `<a class="news-card-link" href="${n.url}" target="_blank">Read full article →</a>` : ''}
-      </div>
-    `).join('') : '<div style="color:var(--text3);font-size:13px;">No recent news found</div>';
-  } catch(e) {
-    document.getElementById('modal-body').innerHTML = '<div class="error-wrap">Failed to load news</div>';
+async function openNews(symbol){
+  document.getElementById('m-title').textContent=`${symbol} — Latest News`;
+  document.getElementById('m-body').innerHTML='<div class="ldg"><div class="sp"></div><p>Loading…</p></div>';
+  document.getElementById('modal').classList.add('open');
+  try{
+    const news=await get(`/api/news/${symbol}`);
+    document.getElementById('m-body').innerHTML=news.length?news.map(n=>`
+      <div class="nc">
+        <div class="nc-t">${esc(n.headline||'')}</div>
+        <div class="nc-m">${esc(n.source||'')} · ${n.datetime?new Date(n.datetime*1000).toLocaleDateString('en-GB'):''}</div>
+        <div class="nc-s">${esc(n.summary||'')}</div>
+        ${n.url?`<a class="nc-l" href="${n.url}" target="_blank" rel="noopener">Read full article →</a>`:''}
+      </div>`).join('')
+    :'<div style="color:var(--text3);font-size:12px">No recent news found</div>';
+  }catch(e){
+    document.getElementById('m-body').innerHTML='<div class="err">Failed to load news</div>';
   }
 }
-
-function closeModal() {
-  document.getElementById('news-modal').classList.remove('open');
-}
-
-document.getElementById('news-modal').addEventListener('click', function(e) {
-  if (e.target === this) closeModal();
-});
+function closeModal(){document.getElementById('modal').classList.remove('open');}
+document.getElementById('modal').addEventListener('click',function(e){if(e.target===this)closeModal();});
 
 // ── TABS ──────────────────────────────────────────────────────────
-function showTab(tab) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById(`section-${tab}`).classList.add('active');
-  event.target.classList.add('active');
-  state.activeTab = tab;
+function showTab(tab,btn){
+  document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(`sec-${tab}`).classList.add('active');
+  btn.classList.add('active');
 }
-
-function showSuggestions(tf, btn) {
-  document.querySelectorAll('.tf-tab').forEach(t => t.classList.remove('active'));
+function showSug(tf,btn){
+  document.querySelectorAll('.tftab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active');
   renderSuggestions(tf);
 }
 
-// ── PWA Service Worker ────────────────────────────────────────────
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
-}
+// ── PWA ───────────────────────────────────────────────────────────
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
 
 // ── INIT ──────────────────────────────────────────────────────────
-fetchAll();
+refreshAll();
 </script>
 </body>
 </html>
