@@ -2,172 +2,81 @@ from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 import requests
 import os
-from functools import lru_cache
 import time
+import re
+from datetime import datetime, timedelta
 
 app = Flask(__name__, static_folder='.')
 CORS(app)
 
-# ── API CREDENTIALS (set these in Render Environment Variables) ──
-ISA_AUTH = os.environ.get('ISA_AUTH', '')          # Base64 encoded ISA key:secret
-INVEST_AUTH = os.environ.get('INVEST_AUTH', '')    # Base64 encoded Invest key:secret
-FINNHUB_KEY = os.environ.get('FINNHUB_KEY', '')    # Finnhub API key
+ISA_AUTH    = os.environ.get('ISA_AUTH', '')
+INVEST_AUTH = os.environ.get('INVEST_AUTH', '')
+FINNHUB_KEY = os.environ.get('FINNHUB_KEY', '')
 
-T212_BASE = 'https://live.trading212.com/api/v0'
+T212_BASE    = 'https://live.trading212.com/api/v0'
 FINNHUB_BASE = 'https://finnhub.io/api/v1'
 
-# ── SECTOR MAP ───────────────────────────────────────────────────
 SECTOR_MAP = {
-    'INTC_US_EQ': 'Technology', 'AVGO_US_EQ': 'Technology',
-    'QCOM_US_EQ': 'Technology', 'ASML_US_EQ': 'Technology',
-    'APP_US_EQ': 'Technology', 'SOUN_US_EQ': 'AI',
-    'QUBT_US_EQ': 'AI', 'DMYI_US_EQ': 'AI',
-    'ARM3l_EQ': 'Technology', '3AMDl_EQ': 'Technology',
-    'SEMIl_EQ': 'Technology', 'SOXLl_EQ': 'Technology',
-    '3TSMl_EQ': 'Technology', 'SMCIl_EQ': 'Technology',
-    'RIOT_US_EQ': 'Crypto', 'BITF_US_EQ': 'Crypto',
-    'BULL_US_EQ': 'Crypto', '3PLTl_EQ': 'Crypto',
-    'IREN_US_EQ': 'Energy/AI', 'APLD_US_EQ': 'Energy/AI',
-    'XE_US_EQ': 'Energy', 'RRl_EQ': 'Energy',
-    'SNII_US_EQ': 'Finance', 'IPOE_US_EQ': 'Finance',
-    'KCAC_US_EQ': 'Finance', 'HOOD_US_EQ': 'Finance',
-    'MAG5l_EQ': 'ETF', 'EQQQl_EQ': 'ETF',
-    '2MUl_EQ': 'ETF', '3HODl_EQ': 'ETF',
-    'LAA3l_EQ': 'ETF', '3LLLl_EQ': 'ETF',
-    '3UBRl_EQ': 'ETF', 'GIG_US_EQ': 'Tech/AI',
-    'PONY_US_EQ': 'Technology', 'XPOA_US_EQ': 'Technology',
-    'ALCC1_US_EQ': 'Finance', 'ASST_US_EQ': 'Finance',
-    'DMYI_US_EQ': 'Technology',
+    'INTC':'Technology','AVGO':'Technology','QCOM':'Technology','ASML':'Technology',
+    'APP':'Technology','NVDA':'Technology','AMD':'Technology','MSFT':'Technology',
+    'AAPL':'Technology','SOUN':'AI','QUBT':'AI','DMYI':'AI','PLTR':'AI',
+    'ARM':'Technology','SEMI':'Technology','SOXL':'Technology','TSM':'Technology',
+    'SMCI':'Technology','RIOT':'Crypto','BITF':'Crypto','BULL':'Crypto',
+    'IREN':'Energy/AI','APLD':'Energy/AI','XE':'Energy','RR':'Energy',
+    'SNII':'Finance','IPOE':'Finance','KCAC':'Finance','HOOD':'Finance',
+    'SOFI':'Finance','ASST':'Finance','ALCC1':'Finance',
+    'MAG5':'ETF','EQQQ':'ETF','MU':'ETF','HOD':'ETF',
+    'LAA':'ETF','LLL':'ETF','UBR':'ETF','GIG':'Tech/AI',
+    'PONY':'Technology','XPOA':'Technology','LLY':'Biotech',
+    'CRWD':'Technology','AMZN':'Technology','TSLA':'Technology',
 }
-
-def t212_headers(auth):
-    return {'Authorization': f'Basic {auth}'}
-
-def finnhub_get(endpoint, params={}):
-    params['token'] = FINNHUB_KEY
-    try:
-        r = requests.get(f'{FINNHUB_BASE}/{endpoint}', params=params, timeout=10)
-        return r.json()
-    except:
-        return {}
 
 def t212_get(endpoint, auth):
     try:
-        r = requests.get(f'{T212_BASE}/{endpoint}', headers=t212_headers(auth), timeout=10)
-        return r.json()
-    except:
-        return {}
+        r = requests.get(
+            f'{T212_BASE}/{endpoint}',
+            headers={'Authorization': f'Basic {auth}'},
+            timeout=15
+        )
+        if r.status_code == 200:
+            return r.json()
+        print(f'T212 {endpoint} status: {r.status_code}')
+    except Exception as e:
+        print(f'T212 error {endpoint}: {e}')
+    return None
 
-def clean_ticker(t212_ticker):
-    """Convert Trading212 ticker to Finnhub symbol e.g. INTC_US_EQ -> INTC"""
-    return t212_ticker.split('_')[0].replace('l', '').replace('3', '')
-
-def get_signal(rsi, macd, macd_signal):
-    """Generate bullish/bearish signal from indicators"""
-    score = 0
-    if rsi:
-        if rsi < 30: score += 2
-        elif rsi < 45: score += 1
-        elif rsi > 70: score -= 2
-        elif rsi > 55: score -= 1
-    if macd and macd_signal:
-        if macd > macd_signal: score += 1
-        else: score -= 1
-    if score >= 2: return 'Strong Bullish'
-    elif score == 1: return 'Bullish'
-    elif score == -1: return 'Bearish'
-    elif score <= -2: return 'Strong Bearish'
-    return 'Neutral'
-
-def get_indicators(symbol):
-    """Get RSI, MACD, Bollinger Bands for a symbol"""
+def fh(endpoint, params={}):
     try:
-        # RSI
-        rsi_data = finnhub_get('indicator', {'symbol': symbol, 'resolution': 'D', 'indicator': 'rsi', 'timeperiod': 14})
-        rsi = rsi_data.get('rsi', [None])[-1] if rsi_data.get('rsi') else None
-
-        # MACD
-        macd_data = finnhub_get('indicator', {'symbol': symbol, 'resolution': 'D', 'indicator': 'macd', 'fastperiod': 12, 'slowperiod': 26, 'signalperiod': 9})
-        macd = macd_data.get('macd', [None])[-1] if macd_data.get('macd') else None
-        macd_signal = macd_data.get('macdSignal', [None])[-1] if macd_data.get('macdSignal') else None
-        macd_hist = macd_data.get('macdHist', [None])[-1] if macd_data.get('macdHist') else None
-
-        # Bollinger Bands
-        bb_data = finnhub_get('indicator', {'symbol': symbol, 'resolution': 'D', 'indicator': 'bbands', 'timeperiod': 20})
-        bb_upper = bb_data.get('upperBand', [None])[-1] if bb_data.get('upperBand') else None
-        bb_lower = bb_data.get('lowerBand', [None])[-1] if bb_data.get('lowerBand') else None
-        bb_middle = bb_data.get('middleBand', [None])[-1] if bb_data.get('middleBand') else None
-
-        # Moving Averages
-        ma50_data = finnhub_get('indicator', {'symbol': symbol, 'resolution': 'D', 'indicator': 'sma', 'timeperiod': 50})
-        ma50 = ma50_data.get('sma', [None])[-1] if ma50_data.get('sma') else None
-
-        ma200_data = finnhub_get('indicator', {'symbol': symbol, 'resolution': 'D', 'indicator': 'sma', 'timeperiod': 200})
-        ma200 = ma200_data.get('sma', [None])[-1] if ma200_data.get('sma') else None
-
-        signal = get_signal(rsi, macd, macd_signal)
-
-        return {
-            'rsi': round(rsi, 2) if rsi else None,
-            'macd': round(macd, 4) if macd else None,
-            'macd_signal': round(macd_signal, 4) if macd_signal else None,
-            'macd_hist': round(macd_hist, 4) if macd_hist else None,
-            'bb_upper': round(bb_upper, 2) if bb_upper else None,
-            'bb_lower': round(bb_lower, 2) if bb_lower else None,
-            'bb_middle': round(bb_middle, 2) if bb_middle else None,
-            'ma50': round(ma50, 2) if ma50 else None,
-            'ma200': round(ma200, 2) if ma200 else None,
-            'signal': signal,
-            'overbought': rsi > 70 if rsi else False,
-            'oversold': rsi < 30 if rsi else False,
-        }
-    except:
-        return {'signal': 'Neutral', 'rsi': None, 'macd': None}
-
-def get_news(symbol):
-    """Get latest news for a symbol"""
-    try:
-        from datetime import datetime, timedelta
-        today = datetime.now().strftime('%Y-%m-%d')
-        month_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-        news = finnhub_get('company-news', {'symbol': symbol, 'from': month_ago, 'to': today})
-        if news and len(news) > 0:
-            latest = news[0]
-            return {
-                'headline': latest.get('headline', ''),
-                'source': latest.get('source', ''),
-                'url': latest.get('url', ''),
-                'datetime': latest.get('datetime', 0),
-                'summary': latest.get('summary', '')[:200] + '...' if latest.get('summary') else ''
-            }
-    except:
-        pass
+        p = dict(params)
+        p['token'] = FINNHUB_KEY
+        r = requests.get(f'{FINNHUB_BASE}/{endpoint}', params=p, timeout=10)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        print(f'FH error {endpoint}: {e}')
     return {}
 
-def enrich_holding(holding, account_type):
-    """Add sector, indicators, news to a holding"""
-    ticker = holding.get('ticker', '')
-    symbol = clean_ticker(ticker)
-    sector = SECTOR_MAP.get(ticker, 'Other')
+def clean_symbol(ticker):
+    s = ticker.split('_')[0]
+    s = re.sub(r'^\d+', '', s)
+    s = s.rstrip('l')
+    return s.upper()
 
-    # Calculate portfolio value
-    value = holding.get('quantity', 0) * holding.get('currentPrice', 0)
-
-    # Get indicators (rate limited — basic info)
-    indicators = get_indicators(symbol)
-
-    # Get news
-    news = get_news(symbol)
-
+def basic_holding(h, account):
+    """Return holding with just T212 data — no Finnhub calls — loads instantly"""
+    ticker = h.get('ticker', '')
+    symbol = clean_symbol(ticker)
+    qty    = h.get('quantity', 0) or 0
+    price  = h.get('currentPrice', 0) or 0
     return {
-        **holding,
-        'symbol': symbol,
-        'sector': sector,
-        'portfolioValue': round(value, 2),
-        'account': account_type,
-        'indicators': indicators,
-        'signal': indicators.get('signal', 'Neutral'),
-        'news': news
+        **h,
+        'symbol':         symbol,
+        'sector':         SECTOR_MAP.get(symbol, 'Other'),
+        'portfolioValue': round(qty * price, 2),
+        'account':        account,
+        'indicators':     {},
+        'signal':         'Loading...',
+        'news':           {},
     }
 
 # ── ROUTES ───────────────────────────────────────────────────────
@@ -176,133 +85,204 @@ def enrich_holding(holding, account_type):
 def index():
     return send_from_directory('.', 'index.html')
 
+@app.route('/manifest.json')
+def manifest():
+    return send_from_directory('.', 'manifest.json')
+
+@app.route('/sw.js')
+def sw():
+    return send_from_directory('.', 'sw.js')
+
+# ── SUMMARY ──────────────────────────────────────────────────────
 @app.route('/api/summary')
-def get_summary():
-    """Get account summaries for both accounts"""
-    isa = t212_get('equity/account/summary', ISA_AUTH)
-    invest = t212_get('equity/account/summary', INVEST_AUTH)
+def api_summary():
+    isa    = t212_get('equity/account/summary', ISA_AUTH) or {}
+    invest = t212_get('equity/account/summary', INVEST_AUTH) or {}
+    def safe(d, *keys):
+        v = d
+        for k in keys:
+            v = (v or {}).get(k) or 0
+        return float(v or 0)
     return jsonify({
-        'isa': isa,
+        'isa':    isa,
         'invest': invest,
         'combined': {
-            'totalValue': round((isa.get('totalValue', 0) or 0) + (invest.get('totalValue', 0) or 0), 2),
-            'availableCash': round(
-                (isa.get('cash', {}).get('availableToTrade', 0) or 0) +
-                (invest.get('cash', {}).get('availableToTrade', 0) or 0), 2),
-            'unrealizedPnL': round(
-                (isa.get('investments', {}).get('unrealizedProfitLoss', 0) or 0) +
-                (invest.get('investments', {}).get('unrealizedProfitLoss', 0) or 0), 2),
-            'realizedPnL': round(
-                (isa.get('investments', {}).get('realizedProfitLoss', 0) or 0) +
-                (invest.get('investments', {}).get('realizedProfitLoss', 0) or 0), 2),
+            'totalValue':    round(safe(isa,'totalValue') + safe(invest,'totalValue'), 2),
+            'availableCash': round(safe(isa,'cash','availableToTrade') + safe(invest,'cash','availableToTrade'), 2),
+            'unrealizedPnL': round(safe(isa,'investments','unrealizedProfitLoss') + safe(invest,'investments','unrealizedProfitLoss'), 2),
+            'realizedPnL':   round(safe(isa,'investments','realizedProfitLoss') + safe(invest,'investments','realizedProfitLoss'), 2),
         }
     })
 
+# ── PORTFOLIO — loads instantly, no Finnhub ───────────────────────
 @app.route('/api/portfolio/isa')
-def get_isa_portfolio():
-    """Get ISA portfolio with enriched data"""
+def api_isa():
     holdings = t212_get('equity/portfolio', ISA_AUTH)
     if not isinstance(holdings, list):
-        return jsonify([])
-    enriched = [enrich_holding(h, 'ISA') for h in holdings]
-    enriched.sort(key=lambda x: x.get('portfolioValue', 0), reverse=True)
-    return jsonify(enriched)
+        return jsonify({'error': 'Failed to load ISA portfolio', 'data': []})
+    result = [basic_holding(h, 'ISA') for h in holdings]
+    result.sort(key=lambda x: x.get('portfolioValue', 0), reverse=True)
+    return jsonify({'data': result})
 
 @app.route('/api/portfolio/invest')
-def get_invest_portfolio():
-    """Get Invest portfolio with enriched data"""
+def api_invest():
     holdings = t212_get('equity/portfolio', INVEST_AUTH)
     if not isinstance(holdings, list):
-        return jsonify([])
-    enriched = [enrich_holding(h, 'Invest') for h in holdings]
-    enriched.sort(key=lambda x: x.get('portfolioValue', 0), reverse=True)
-    return jsonify(enriched)
+        return jsonify({'error': 'Failed to load Invest portfolio', 'data': []})
+    result = [basic_holding(h, 'Invest') for h in holdings]
+    result.sort(key=lambda x: x.get('portfolioValue', 0), reverse=True)
+    return jsonify({'data': result})
 
+# ── WATCHLIST — loads instantly ───────────────────────────────────
 @app.route('/api/watchlist')
-def get_watchlist():
-    """Get combined watchlist from both accounts"""
-    isa = t212_get('equity/portfolio', ISA_AUTH)
-    invest = t212_get('equity/portfolio', INVEST_AUTH)
-    all_tickers = {}
-    if isinstance(isa, list):
-        for h in isa:
-            t = h.get('ticker')
-            if t and t not in all_tickers:
-                all_tickers[t] = h
-    if isinstance(invest, list):
-        for h in invest:
-            t = h.get('ticker')
-            if t and t not in all_tickers:
-                all_tickers[t] = h
-    enriched = [enrich_holding(h, 'Watchlist') for h in all_tickers.values()]
-    enriched.sort(key=lambda x: x.get('portfolioValue', 0), reverse=True)
-    return jsonify(enriched)
+def api_watchlist():
+    isa_h    = t212_get('equity/portfolio', ISA_AUTH) or []
+    invest_h = t212_get('equity/portfolio', INVEST_AUTH) or []
+    seen = {}
+    for h in (isa_h if isinstance(isa_h, list) else []):
+        t = h.get('ticker')
+        if t and t not in seen:
+            seen[t] = basic_holding(h, 'ISA')
+    for h in (invest_h if isinstance(invest_h, list) else []):
+        t = h.get('ticker')
+        if t and t not in seen:
+            seen[t] = basic_holding(h, 'Invest')
+    items = sorted(seen.values(), key=lambda x: x.get('portfolioValue', 0), reverse=True)
+    return jsonify({'data': items})
 
+# ── INDICATORS — called per stock by frontend ─────────────────────
+@app.route('/api/indicators/<symbol>')
+def api_indicators(symbol):
+    result = {
+        'rsi': None, 'macd': None, 'macd_signal': None, 'macd_hist': None,
+        'bb_upper': None, 'bb_lower': None, 'bb_middle': None,
+        'ma50': None, 'ma200': None, 'signal': 'Neutral',
+        'overbought': False, 'oversold': False
+    }
+    to_ts   = int(time.time())
+    from_ts = to_ts - (300 * 86400)
+    base    = {'symbol': symbol, 'resolution': 'D', 'from': from_ts, 'to': to_ts}
+    try:
+        # RSI
+        r = fh('indicator', {**base, 'indicator': 'rsi', 'timeperiod': 14})
+        lst = r.get('rsi', [])
+        if lst: result['rsi'] = round(lst[-1], 2)
+
+        # MACD
+        r = fh('indicator', {**base, 'indicator': 'macd', 'fastperiod': 12, 'slowperiod': 26, 'signalperiod': 9})
+        if r.get('macd'):       result['macd']        = round(r['macd'][-1], 4)
+        if r.get('macdSignal'): result['macd_signal'] = round(r['macdSignal'][-1], 4)
+        if r.get('macdHist'):   result['macd_hist']   = round(r['macdHist'][-1], 4)
+
+        # Bollinger Bands
+        r = fh('indicator', {**base, 'indicator': 'bbands', 'timeperiod': 20})
+        if r.get('upperBand'):  result['bb_upper']  = round(r['upperBand'][-1], 2)
+        if r.get('lowerBand'):  result['bb_lower']  = round(r['lowerBand'][-1], 2)
+        if r.get('middleBand'): result['bb_middle'] = round(r['middleBand'][-1], 2)
+
+        # MA50
+        r = fh('indicator', {**base, 'indicator': 'sma', 'timeperiod': 50})
+        if r.get('sma'): result['ma50'] = round(r['sma'][-1], 2)
+
+        # MA200
+        r = fh('indicator', {**base, 'indicator': 'sma', 'timeperiod': 200})
+        if r.get('sma'): result['ma200'] = round(r['sma'][-1], 2)
+
+        # Signal scoring
+        rsi = result['rsi']
+        if rsi:
+            result['overbought'] = rsi > 70
+            result['oversold']   = rsi < 30
+        score = 0
+        if rsi:
+            if rsi < 30:   score += 2
+            elif rsi < 45: score += 1
+            elif rsi > 70: score -= 2
+            elif rsi > 55: score -= 1
+        if result['macd'] and result['macd_signal']:
+            score += 1 if result['macd'] > result['macd_signal'] else -1
+        if result['ma50'] and result['ma200']:
+            score += 1 if result['ma50'] > result['ma200'] else -1
+        if   score >= 3:  result['signal'] = 'Strong Bullish'
+        elif score >= 1:  result['signal'] = 'Bullish'
+        elif score <= -3: result['signal'] = 'Strong Bearish'
+        elif score <= -1: result['signal'] = 'Bearish'
+        else:             result['signal'] = 'Neutral'
+
+    except Exception as e:
+        print(f'Indicator error {symbol}: {e}')
+    return jsonify(result)
+
+# ── NEWS — called per stock by frontend ───────────────────────────
 @app.route('/api/news/<symbol>')
-def get_stock_news(symbol):
-    """Get detailed news for a specific stock"""
-    from datetime import datetime, timedelta
-    today = datetime.now().strftime('%Y-%m-%d')
+def api_news(symbol):
+    today     = datetime.now().strftime('%Y-%m-%d')
     month_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-    news = finnhub_get('company-news', {'symbol': symbol, 'from': month_ago, 'to': today})
-    return jsonify(news[:10] if news else [])
+    news = fh('company-news', {'symbol': symbol, 'from': month_ago, 'to': today})
+    return jsonify(news[:10] if isinstance(news, list) else [])
 
+# ── QUOTE ─────────────────────────────────────────────────────────
+@app.route('/api/quote/<symbol>')
+def api_quote(symbol):
+    return jsonify(fh('quote', {'symbol': symbol}))
+
+# ── EARNINGS ─────────────────────────────────────────────────────
 @app.route('/api/earnings')
-def get_earnings():
-    """Get upcoming earnings for portfolio stocks"""
-    from datetime import datetime, timedelta
-    today = datetime.now().strftime('%Y-%m-%d')
+def api_earnings():
+    today  = datetime.now().strftime('%Y-%m-%d')
     future = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
-    earnings = finnhub_get('calendar/earnings', {'from': today, 'to': future})
-    return jsonify(earnings.get('earningsCalendar', [])[:20])
+    data   = fh('calendar/earnings', {'from': today, 'to': future})
+    return jsonify((data.get('earningsCalendar') or [])[:30])
 
+# ── SUGGESTIONS ──────────────────────────────────────────────────
 @app.route('/api/suggestions')
-def get_suggestions():
-    """Get AI stock suggestions by timeframe"""
-    suggestions = {
+def api_suggestions():
+    return jsonify({
         '1day': [
-            {'ticker': 'NVDA', 'company': 'NVIDIA', 'sector': 'AI', 'risk': 'High',
-             'reason': 'Strong momentum on AI chip demand. RSI pulled back from overbought.',
-             'targets': {'1d': 3, '1w': 8, '1m': 15, '1y': 45}},
-            {'ticker': 'TSLA', 'company': 'Tesla', 'sector': 'Technology', 'risk': 'Very High',
-             'reason': 'Bouncing off key support. High volume accumulation signal.',
-             'targets': {'1d': 4, '1w': 10, '1m': 20, '1y': 60}},
-            {'ticker': 'AMD', 'company': 'AMD', 'sector': 'Technology', 'risk': 'Medium',
-             'reason': 'MACD crossover on daily. Strong data center growth.',
-             'targets': {'1d': 2, '1w': 6, '1m': 12, '1y': 35}},
+            {'ticker':'NVDA','company':'NVIDIA Corp','sector':'AI','risk':'High',
+             'reason':'Strong AI chip momentum. MACD bullish crossover. Institutional accumulation.',
+             'targets':{'1d':3,'2d':5,'1w':8,'1m':18,'1y':55}},
+            {'ticker':'AMD','company':'Advanced Micro Devices','sector':'Technology','risk':'Medium',
+             'reason':'Data centre GPU demand rising. RSI recovered from oversold. Strong earnings beat.',
+             'targets':{'1d':2,'2d':4,'1w':7,'1m':15,'1y':40}},
+            {'ticker':'TSLA','company':'Tesla Inc','sector':'Technology','risk':'Very High',
+             'reason':'Bouncing off key support. High volume. Robotaxi catalyst upcoming.',
+             'targets':{'1d':4,'2d':7,'1w':12,'1m':25,'1y':70}},
         ],
         '1week': [
-            {'ticker': 'PLTR', 'company': 'Palantir', 'sector': 'AI', 'risk': 'High',
-             'reason': 'Government AI contracts expanding. Bullish wedge breakout.',
-             'targets': {'1d': 1, '1w': 7, '1m': 18, '1y': 55}},
-            {'ticker': 'SOFI', 'company': 'SoFi Technologies', 'sector': 'Finance', 'risk': 'Medium',
-             'reason': 'Rate cut expectations. Fintech recovery play. RSI oversold.',
-             'targets': {'1d': 1, '1w': 5, '1m': 14, '1y': 40}},
+            {'ticker':'PLTR','company':'Palantir Technologies','sector':'AI','risk':'High',
+             'reason':'Government AI contracts expanding. Bullish wedge breakout on weekly chart.',
+             'targets':{'1d':1,'2d':2,'1w':8,'1m':20,'1y':60}},
+            {'ticker':'SOFI','company':'SoFi Technologies','sector':'Finance','risk':'Medium',
+             'reason':'Rate cut expectations boosting fintech. RSI oversold. Strong loan growth.',
+             'targets':{'1d':1,'2d':2,'1w':6,'1m':16,'1y':45}},
+            {'ticker':'CRWD','company':'CrowdStrike','sector':'Technology','risk':'Medium',
+             'reason':'Cybersecurity spend accelerating. AI threat landscape growing.',
+             'targets':{'1d':1,'2d':2,'1w':5,'1m':12,'1y':50}},
         ],
         '1month': [
-            {'ticker': 'AMZN', 'company': 'Amazon', 'sector': 'Technology', 'risk': 'Low',
-             'reason': 'AWS AI growth accelerating. Strong free cash flow.',
-             'targets': {'1d': 0.5, '1w': 3, '1m': 10, '1y': 30}},
-            {'ticker': 'MSFT', 'company': 'Microsoft', 'sector': 'AI', 'risk': 'Low',
-             'reason': 'Copilot adoption driving enterprise growth. Stable dividend.',
-             'targets': {'1d': 0.5, '1w': 2, '1m': 8, '1y': 25}},
+            {'ticker':'AMZN','company':'Amazon','sector':'Technology','risk':'Low',
+             'reason':'AWS AI growth accelerating. Strong free cash flow. Advertising outperforming.',
+             'targets':{'1d':0.5,'2d':1,'1w':3,'1m':10,'1y':35}},
+            {'ticker':'MSFT','company':'Microsoft','sector':'AI','risk':'Low',
+             'reason':'Copilot enterprise adoption. Azure AI growing 50%+ YoY. Stable dividend.',
+             'targets':{'1d':0.5,'2d':1,'1w':3,'1m':9,'1y':28}},
+            {'ticker':'LLY','company':'Eli Lilly','sector':'Biotech','risk':'Low',
+             'reason':'GLP-1 weight loss drugs dominating. Strong pipeline. Multiple catalysts.',
+             'targets':{'1d':0.3,'2d':0.8,'1w':3,'1m':9,'1y':38}},
         ],
         '1year': [
-            {'ticker': 'CRWD', 'company': 'CrowdStrike', 'sector': 'Technology', 'risk': 'Medium',
-             'reason': 'Cybersecurity spending accelerating with AI threats. Market leader.',
-             'targets': {'1d': 0.5, '1w': 3, '1m': 9, '1y': 50}},
-            {'ticker': 'LLY', 'company': 'Eli Lilly', 'sector': 'Biotech', 'risk': 'Low',
-             'reason': 'GLP-1 drug pipeline. Weight loss market massive. Strong earnings.',
-             'targets': {'1d': 0.3, '1w': 2, '1m': 7, '1y': 35}},
-        ]
-    }
-    return jsonify(suggestions)
-
-@app.route('/api/quote/<symbol>')
-def get_quote(symbol):
-    """Get live quote for a symbol"""
-    quote = finnhub_get('quote', {'symbol': symbol})
-    return jsonify(quote)
+            {'ticker':'IONQ','company':'IonQ Inc','sector':'AI','risk':'Very High',
+             'reason':'Quantum computing leader. Government contracts. Long term quantum play.',
+             'targets':{'1d':2,'2d':4,'1w':8,'1m':20,'1y':150}},
+            {'ticker':'RXRX','company':'Recursion Pharma','sector':'Biotech','risk':'High',
+             'reason':'AI drug discovery. NVIDIA partnership. Pipeline expanding rapidly.',
+             'targets':{'1d':1,'2d':2,'1w':6,'1m':18,'1y':80}},
+            {'ticker':'ALAB','company':'Astera Labs','sector':'Technology','risk':'High',
+             'reason':'AI data centre connectivity. Explosive revenue growth. Undervalued vs peers.',
+             'targets':{'1d':1,'2d':2,'1w':5,'1m':15,'1y':70}},
+        ],
+    })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
