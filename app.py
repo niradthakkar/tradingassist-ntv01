@@ -6,7 +6,9 @@ import time
 import re
 from datetime import datetime, timedelta
 
-app = Flask(__name__, static_folder='.')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+app = Flask(__name__, static_folder=BASE_DIR)
 CORS(app)
 
 ISA_AUTH    = os.environ.get('ISA_AUTH', '')
@@ -29,6 +31,7 @@ SECTOR_MAP = {
     'LAA':'ETF','LLL':'ETF','UBR':'ETF','GIG':'Tech/AI',
     'PONY':'Technology','XPOA':'Technology','LLY':'Biotech',
     'CRWD':'Technology','AMZN':'Technology','TSLA':'Technology',
+    'PLT':'Crypto','ARM3':'Technology',
 }
 
 def t212_get(endpoint, auth):
@@ -63,7 +66,6 @@ def clean_symbol(ticker):
     return s.upper()
 
 def basic_holding(h, account):
-    """Return holding with just T212 data — no Finnhub calls — loads instantly"""
     ticker = h.get('ticker', '')
     symbol = clean_symbol(ticker)
     qty    = h.get('quantity', 0) or 0
@@ -79,21 +81,18 @@ def basic_holding(h, account):
         'news':           {},
     }
 
-# ── ROUTES ───────────────────────────────────────────────────────
-
 @app.route('/')
 def index():
-    return send_from_directory('.', 'index.html')
+    return send_from_directory(BASE_DIR, 'index.html')
 
 @app.route('/manifest.json')
 def manifest():
-    return send_from_directory('.', 'manifest.json')
+    return send_from_directory(BASE_DIR, 'manifest.json')
 
 @app.route('/sw.js')
 def sw():
-    return send_from_directory('.', 'sw.js')
+    return send_from_directory(BASE_DIR, 'sw.js')
 
-# ── SUMMARY ──────────────────────────────────────────────────────
 @app.route('/api/summary')
 def api_summary():
     isa    = t212_get('equity/account/summary', ISA_AUTH) or {}
@@ -114,7 +113,6 @@ def api_summary():
         }
     })
 
-# ── PORTFOLIO — loads instantly, no Finnhub ───────────────────────
 @app.route('/api/portfolio/isa')
 def api_isa():
     holdings = t212_get('equity/portfolio', ISA_AUTH)
@@ -133,7 +131,6 @@ def api_invest():
     result.sort(key=lambda x: x.get('portfolioValue', 0), reverse=True)
     return jsonify({'data': result})
 
-# ── WATCHLIST — loads instantly ───────────────────────────────────
 @app.route('/api/watchlist')
 def api_watchlist():
     isa_h    = t212_get('equity/portfolio', ISA_AUTH) or []
@@ -150,7 +147,6 @@ def api_watchlist():
     items = sorted(seen.values(), key=lambda x: x.get('portfolioValue', 0), reverse=True)
     return jsonify({'data': items})
 
-# ── INDICATORS — called per stock by frontend ─────────────────────
 @app.route('/api/indicators/<symbol>')
 def api_indicators(symbol):
     result = {
@@ -163,32 +159,26 @@ def api_indicators(symbol):
     from_ts = to_ts - (300 * 86400)
     base    = {'symbol': symbol, 'resolution': 'D', 'from': from_ts, 'to': to_ts}
     try:
-        # RSI
         r = fh('indicator', {**base, 'indicator': 'rsi', 'timeperiod': 14})
         lst = r.get('rsi', [])
         if lst: result['rsi'] = round(lst[-1], 2)
 
-        # MACD
         r = fh('indicator', {**base, 'indicator': 'macd', 'fastperiod': 12, 'slowperiod': 26, 'signalperiod': 9})
         if r.get('macd'):       result['macd']        = round(r['macd'][-1], 4)
         if r.get('macdSignal'): result['macd_signal'] = round(r['macdSignal'][-1], 4)
         if r.get('macdHist'):   result['macd_hist']   = round(r['macdHist'][-1], 4)
 
-        # Bollinger Bands
         r = fh('indicator', {**base, 'indicator': 'bbands', 'timeperiod': 20})
         if r.get('upperBand'):  result['bb_upper']  = round(r['upperBand'][-1], 2)
         if r.get('lowerBand'):  result['bb_lower']  = round(r['lowerBand'][-1], 2)
         if r.get('middleBand'): result['bb_middle'] = round(r['middleBand'][-1], 2)
 
-        # MA50
         r = fh('indicator', {**base, 'indicator': 'sma', 'timeperiod': 50})
         if r.get('sma'): result['ma50'] = round(r['sma'][-1], 2)
 
-        # MA200
         r = fh('indicator', {**base, 'indicator': 'sma', 'timeperiod': 200})
         if r.get('sma'): result['ma200'] = round(r['sma'][-1], 2)
 
-        # Signal scoring
         rsi = result['rsi']
         if rsi:
             result['overbought'] = rsi > 70
@@ -213,7 +203,6 @@ def api_indicators(symbol):
         print(f'Indicator error {symbol}: {e}')
     return jsonify(result)
 
-# ── NEWS — called per stock by frontend ───────────────────────────
 @app.route('/api/news/<symbol>')
 def api_news(symbol):
     today     = datetime.now().strftime('%Y-%m-%d')
@@ -221,12 +210,10 @@ def api_news(symbol):
     news = fh('company-news', {'symbol': symbol, 'from': month_ago, 'to': today})
     return jsonify(news[:10] if isinstance(news, list) else [])
 
-# ── QUOTE ─────────────────────────────────────────────────────────
 @app.route('/api/quote/<symbol>')
 def api_quote(symbol):
     return jsonify(fh('quote', {'symbol': symbol}))
 
-# ── EARNINGS ─────────────────────────────────────────────────────
 @app.route('/api/earnings')
 def api_earnings():
     today  = datetime.now().strftime('%Y-%m-%d')
@@ -234,7 +221,6 @@ def api_earnings():
     data   = fh('calendar/earnings', {'from': today, 'to': future})
     return jsonify((data.get('earningsCalendar') or [])[:30])
 
-# ── SUGGESTIONS ──────────────────────────────────────────────────
 @app.route('/api/suggestions')
 def api_suggestions():
     return jsonify({
