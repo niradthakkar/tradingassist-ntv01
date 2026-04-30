@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: tradingassist-ntv01
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: ISA_AUTH
+        sync: false
+      - key: INVEST_AUTH
+        sync: false
+      - key: FINNHUB_KEY
+        sync: false

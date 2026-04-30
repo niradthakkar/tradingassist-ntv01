@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0e1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TradingAssist">
+<link rel="manifest" href="manifest.json">
+<title>TradingAssist-NTv0.1</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e1a;
+  --bg2: #111827;
+  --bg3: #1a2235;
+  --border: #1e2d45;
+  --border2: #253550;
+  --text: #e8edf5;
+  --text2: #8fa3c0;
+  --text3: #4a6080;
+  --accent: #3b82f6;
+  --accent2: #60a5fa;
+  --green: #10b981;
+  --green2: #34d399;
+  --green-bg: rgba(16,185,129,0.1);
+  --red: #ef4444;
+  --red2: #f87171;
+  --red-bg: rgba(239,68,68,0.1);
+  --amber: #f59e0b;
+  --amber-bg: rgba(245,158,11,0.1);
+  --purple: #8b5cf6;
+  --purple-bg: rgba(139,92,246,0.1);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Syne', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+/* Layout */
+.app { max-width: 1400px; margin: 0 auto; padding: 20px 16px; }
+
+/* Header */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; background: var(--bg2);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  margin-bottom: 20px;
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-icon {
+  width: 36px; height: 36px; background: var(--accent);
+  border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.logo-text { font-size: 18px; font-weight: 700; color: var(--text); }
+.logo-sub { font-size: 11px; color: var(--text3); font-family: 'DM Mono', monospace; }
+.header-right { display: flex; align-items: center; gap: 10px; }
+.live-badge {
+  display: flex; align-items: center; gap: 5px;
+  background: var(--green-bg); color: var(--green);
+  padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+}
+.live-dot {
+  width: 6px; height: 6px; background: var(--green);
+  border-radius: 50%; animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.refresh-btn {
+  background: var(--bg3); border: 1px solid var(--border2);
+  color: var(--text2); padding: 8px 16px; border-radius: var(--radius-sm);
+  font-size: 13px; cursor: pointer; font-family: 'Syne', sans-serif;
+  transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+}
+.refresh-btn:hover { background: var(--border); color: var(--text); }
+.refresh-btn.loading { opacity: 0.7; pointer-events: none; }
+.spin { animation: spin 1s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Nav Tabs */
+.nav {
+  display: flex; gap: 4px; margin-bottom: 20px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 4px; overflow-x: auto;
+}
+.nav-tab {
+  padding: 8px 16px; border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  color: var(--text2); white-space: nowrap; transition: all 0.2s;
+  border: none; background: transparent; font-family: 'Syne', sans-serif;
+}
+.nav-tab.active {
+  background: var(--accent); color: #fff;
+}
+.nav-tab:hover:not(.active) { color: var(--text); background: var(--bg3); }
+
+/* Sections */
+.section { display: none; }
+.section.active { display: block; }
+
+/* Summary Cards */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px; margin-bottom: 20px;
+}
+.card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  transition: border-color 0.2s;
+}
+.card:hover { border-color: var(--border2); }
+.card-label { font-size: 11px; color: var(--text3); margin-bottom: 6px; font-family: 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 0.5px; }
+.card-value { font-size: 24px; font-weight: 700; color: var(--text); }
+.card-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+.card-value.up { color: var(--green); }
+.card-value.down { color: var(--red); }
+.card-value.accent { color: var(--accent2); }
+.card-value.purple { color: var(--purple); }
+.card-value.amber { color: var(--amber); }
+
+/* Account Header */
+.account-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; margin-top: 24px;
+}
+.account-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 600;
+}
+.account-badge {
+  font-size: 10px; padding: 2px 8px; border-radius: 20px;
+  font-family: 'DM Mono', monospace; font-weight: 500;
+}
+.badge-isa { background: var(--purple-bg); color: var(--purple); }
+.badge-invest { background: var(--amber-bg); color: var(--amber); }
+.badge-watch { background: var(--green-bg); color: var(--green); }
+
+/* Table */
+.table-wrap {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; margin-bottom: 20px;
+  overflow-x: auto;
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 900px; }
+th {
+  text-align: left; padding: 10px 14px;
+  font-size: 10px; font-weight: 600; color: var(--text3);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3); font-family: 'DM Mono', monospace;
+  text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;
+}
+td {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  color: var(--text); vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,0.02); }
+.ticker-cell { display: flex; flex-direction: column; gap: 2px; }
+.ticker { font-weight: 600; font-family: 'DM Mono', monospace; font-size: 13px; }
+.sector-tag {
+  font-size: 10px; color: var(--text3);
+  background: var(--bg3); padding: 1px 6px;
+  border-radius: 4px; display: inline-block;
+}
+.up { color: var(--green); }
+.down { color: var(--red); }
+.neutral { color: var(--text2); }
+
+/* Signal Pills */
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.pill-strong-bull { background: rgba(16,185,129,0.2); color: var(--green2); }
+.pill-bull { background: rgba(16,185,129,0.1); color: var(--green); }
+.pill-neutral { background: var(--bg3); color: var(--text2); }
+.pill-bear { background: rgba(239,68,68,0.1); color: var(--red); }
+.pill-strong-bear { background: rgba(239,68,68,0.2); color: var(--red2); }
+
+/* Indicators */
+.indicators { display: flex; gap: 6px; flex-wrap: wrap; }
+.ind-tag {
+  font-size: 10px; padding: 2px 6px; border-radius: 4px;
+  font-family: 'DM Mono', monospace; white-space: nowrap;
+  background: var(--bg3); color: var(--text2);
+}
+.ind-tag.rsi-high { background: var(--red-bg); color: var(--red2); }
+.ind-tag.rsi-low { background: var(--green-bg); color: var(--green2); }
+.ind-tag.macd-bull { background: var(--green-bg); color: var(--green); }
+.ind-tag.macd-bear { background: var(--red-bg); color: var(--red); }
+
+/* News inline */
+.news-inline {
+  font-size: 11px; color: var(--text2); max-width: 200px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  cursor: pointer;
+}
+.news-inline:hover { color: var(--accent2); }
+
+/* News expand button */
+.news-btn {
+  background: none; border: none; color: var(--accent);
+  font-size: 11px; cursor: pointer; padding: 2px 6px;
+  border-radius: 4px; font-family: 'Syne', sans-serif;
+}
+.news-btn:hover { background: var(--purple-bg); }
+
+/* News Modal */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7); z-index: 100;
+  align-items: center; justify-content: center; padding: 20px;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: var(--radius); max-width: 600px; width: 100%;
+  max-height: 80vh; overflow-y: auto;
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--bg2);
+}
+.modal-title { font-size: 16px; font-weight: 600; }
+.modal-close {
+  background: none; border: none; color: var(--text2);
+  font-size: 20px; cursor: pointer; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+}
+.modal-close:hover { background: var(--bg3); color: var(--text); }
+.modal-body { padding: 16px 20px; }
+.news-card {
+  padding: 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); margin-bottom: 10px;
+  background: var(--bg3);
+}
+.news-card-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+.news-card-meta { font-size: 11px; color: var(--text3); margin-bottom: 6px; }
+.news-card-summary { font-size: 12px; color: var(--text2); line-height: 1.5; }
+.news-card-link {
+  font-size: 11px; color: var(--accent); text-decoration: none;
+  display: inline-block; margin-top: 6px;
+}
+
+/* Watchlist Add */
+.watchlist-add {
+  display: flex; gap: 8px; margin-bottom: 16px;
+}
+.watchlist-input {
+  flex: 1; background: var(--bg2); border: 1px solid var(--border2);
+  color: var(--text); padding: 8px 14px; border-radius: var(--radius-sm);
+  font-size: 13px; font-family: 'Syne', sans-serif; outline: none;
+}
+.watchlist-input:focus { border-color: var(--accent); }
+.watchlist-input::placeholder { color: var(--text3); }
+.add-btn {
+  background: var(--accent); color: #fff; border: none;
+  padding: 8px 16px; border-radius: var(--radius-sm);
+  font-size: 13px; cursor: pointer; font-family: 'Syne', sans-serif;
+  font-weight: 600; transition: background 0.2s;
+}
+.add-btn:hover { background: #2563eb; }
+.remove-btn {
+  background: none; border: none; color: var(--red);
+  font-size: 13px; cursor: pointer; padding: 4px 8px;
+  border-radius: 4px;
+}
+.remove-btn:hover { background: var(--red-bg); }
+
+/* Suggestions */
+.timeframe-tabs {
+  display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.tf-tab {
+  padding: 6px 14px; border-radius: var(--radius-sm);
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  background: var(--bg3); color: var(--text2);
+  border: 1px solid var(--border); transition: all 0.2s;
+  font-family: 'Syne', sans-serif;
+}
+.tf-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.suggestions-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.suggestion-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  transition: border-color 0.2s;
+}
+.suggestion-card:hover { border-color: var(--border2); }
+.sug-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+.sug-ticker { font-size: 18px; font-weight: 700; font-family: 'DM Mono', monospace; }
+.sug-company { font-size: 11px; color: var(--text2); }
+.risk-badge { font-size: 10px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+.risk-low { background: var(--green-bg); color: var(--green2); }
+.risk-medium { background: var(--amber-bg); color: var(--amber); }
+.risk-high { background: var(--red-bg); color: var(--red2); }
+.risk-very-high { background: rgba(239,68,68,0.3); color: #fca5a5; }
+.sug-targets {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 6px; margin: 10px 0;
+}
+.target-item {
+  background: var(--bg3); border-radius: var(--radius-sm);
+  padding: 6px; text-align: center;
+}
+.target-label { font-size: 9px; color: var(--text3); margin-bottom: 2px; font-family: 'DM Mono', monospace; }
+.target-val { font-size: 13px; font-weight: 600; color: var(--green); }
+.sug-reason { font-size: 12px; color: var(--text2); line-height: 1.4; margin-bottom: 8px; }
+.sug-sector { font-size: 10px; color: var(--text3); }
+.owned-badge {
+  font-size: 10px; padding: 2px 6px; border-radius: 4px;
+  background: var(--purple-bg); color: var(--purple);
+  font-family: 'DM Mono', monospace;
+}
+
+/* Earnings */
+.earnings-list {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.earnings-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.earnings-item:last-child { border-bottom: none; }
+.earnings-left h4 { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+.earnings-left p { font-size: 12px; color: var(--text2); }
+.earnings-right { text-align: right; }
+.earnings-date { font-size: 13px; font-weight: 600; color: var(--accent2); margin-bottom: 4px; font-family: 'DM Mono', monospace; }
+
+/* P&L Time periods */
+.pnl-periods {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px; margin-bottom: 16px;
+}
+.pnl-period {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px 12px; text-align: center;
+}
+.pnl-period-label { font-size: 10px; color: var(--text3); margin-bottom: 4px; font-family: 'DM Mono', monospace; }
+.pnl-period-val { font-size: 15px; font-weight: 700; }
+
+/* Loading */
+.loading-wrap {
+  display: flex; align-items: center; justify-content: center;
+  padding: 60px; flex-direction: column; gap: 12px;
+}
+.loading-spinner {
+  width: 32px; height: 32px; border: 2px solid var(--border2);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.loading-text { font-size: 13px; color: var(--text3); }
+
+/* Error */
+.error-wrap {
+  background: var(--red-bg); border: 1px solid rgba(239,68,68,0.3);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+  font-size: 13px; color: var(--red2);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .header { flex-direction: column; gap: 10px; align-items: flex-start; }
+  .cards-grid { grid-template-columns: repeat(2, 1fr); }
+  .suggestions-grid { grid-template-columns: 1fr; }
+  table { min-width: 700px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">📈</div>
+      <div>
+        <div class="logo-text">TradingAssist</div>
+        <div class="logo-sub">NT v0.1 • GBP</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="live-badge"><div class="live-dot"></div> LIVE</div>
+      <button class="refresh-btn" onclick="refreshAll()">
+        <span id="refresh-icon">⟳</span> Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- Nav -->
+  <div class="nav">
+    <button class="nav-tab active" onclick="showTab('overview')">📊 Overview</button>
+    <button class="nav-tab" onclick="showTab('isa')">🏦 ISA Portfolio</button>
+    <button class="nav-tab" onclick="showTab('invest')">💼 Invest Portfolio</button>
+    <button class="nav-tab" onclick="showTab('watchlist')">👁 Watchlist</button>
+    <button class="nav-tab" onclick="showTab('suggestions')">🤖 AI Suggestions</button>
+    <button class="nav-tab" onclick="showTab('earnings')">📅 Earnings</button>
+  </div>
+
+  <!-- Overview Section -->
+  <div id="section-overview" class="section active">
+    <div id="overview-content">
+      <div class="loading-wrap">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading your portfolio...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ISA Section -->
+  <div id="section-isa" class="section">
+    <div id="isa-content">
+      <div class="loading-wrap">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading ISA portfolio...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Invest Section -->
+  <div id="section-invest" class="section">
+    <div id="invest-content">
+      <div class="loading-wrap">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading Invest portfolio...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Watchlist Section -->
+  <div id="section-watchlist" class="section">
+    <div class="watchlist-add">
+      <input class="watchlist-input" id="watchlist-input" placeholder="Add stock ticker e.g. NVDA" />
+      <button class="add-btn" onclick="addToWatchlist()">+ Add</button>
+    </div>
+    <div id="watchlist-content">
+      <div class="loading-wrap">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading watchlist...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Suggestions Section -->
+  <div id="section-suggestions" class="section">
+    <div class="timeframe-tabs">
+      <button class="tf-tab active" onclick="showSuggestions('1day', this)">1 Day</button>
+      <button class="tf-tab" onclick="showSuggestions('1week', this)">1 Week</button>
+      <button class="tf-tab" onclick="showSuggestions('1month', this)">1 Month</button>
+      <button class="tf-tab" onclick="showSuggestions('1year', this)">1 Year</button>
+    </div>
+    <div id="suggestions-content">
+      <div class="loading-wrap">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading AI suggestions...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Earnings Section -->
+  <div id="section-earnings" class="section">
+    <div id="earnings-content">
+      <div class="loading-wrap">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading earnings calendar...</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- News Modal -->
+<div class="modal-overlay" id="news-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">News</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ── STATE ────────────────────────────────────────────────────────
+let state = {
+  summary: null,
+  isa: [],
+  invest: [],
+  watchlist: [],
+  suggestions: {},
+  earnings: [],
+  extraWatchlist: JSON.parse(localStorage.getItem('extraWatchlist') || '[]'),
+  removedFromWatchlist: JSON.parse(localStorage.getItem('removedWatchlist') || '[]'),
+  activeTab: 'overview',
+  sugTimeframe: '1day'
+};
+
+const ownedTickers = new Set();
+
+// ── HELPERS ──────────────────────────────────────────────────────
+const fmt = (n, dec=2) => n != null ? Number(n).toLocaleString('en-GB', {minimumFractionDigits: dec, maximumFractionDigits: dec}) : '—';
+const fmtGBP = (n) => n != null ? `£${fmt(n)}` : '—';
+const fmtUSD = (n) => n != null ? `$${fmt(n)}` : '—';
+const fmtPct = (n) => n != null ? `${n >= 0 ? '+' : ''}${fmt(n)}%` : '—';
+const cls = (n) => n > 0 ? 'up' : n < 0 ? 'down' : 'neutral';
+
+function signalPill(signal) {
+  const map = {
+    'Strong Bullish': ['pill-strong-bull', '▲▲ Strong Bullish'],
+    'Bullish': ['pill-bull', '▲ Bullish'],
+    'Neutral': ['pill-neutral', '— Neutral'],
+    'Bearish': ['pill-bear', '▼ Bearish'],
+    'Strong Bearish': ['pill-strong-bear', '▼▼ Strong Bearish'],
+  };
+  const [cls, label] = map[signal] || ['pill-neutral', '— Neutral'];
+  return `<span class="pill ${cls}">${label}</span>`;
+}
+
+function rsiClass(rsi) {
+  if (!rsi) return '';
+  if (rsi > 70) return 'rsi-high';
+  if (rsi < 30) return 'rsi-low';
+  return '';
+}
+
+function indicatorTags(ind) {
+  if (!ind) return '—';
+  let tags = [];
+  if (ind.rsi) {
+    const label = ind.rsi > 70 ? '🔴 Overbought' : ind.rsi < 30 ? '🟢 Oversold' : 'Neutral';
+    tags.push(`<span class="ind-tag ${rsiClass(ind.rsi)}">RSI ${fmt(ind.rsi, 1)}</span>`);
+  }
+  if (ind.macd != null && ind.macd_signal != null) {
+    const bull = ind.macd > ind.macd_signal;
+    tags.push(`<span class="ind-tag ${bull ? 'macd-bull' : 'macd-bear'}">MACD ${bull ? '▲' : '▼'}</span>`);
+  }
+  if (ind.ma50 && ind.ma200) {
+    const golden = ind.ma50 > ind.ma200;
+    tags.push(`<span class="ind-tag ${golden ? 'macd-bull' : 'macd-bear'}">${golden ? 'Golden ✓' : 'Death ✗'}</span>`);
+  }
+  return tags.join('') || '—';
+}
+
+function riskBadge(risk) {
+  const map = {
+    'Low': 'risk-low', 'Medium': 'risk-medium',
+    'High': 'risk-high', 'Very High': 'risk-very-high'
+  };
+  return `<span class="risk-badge ${map[risk] || 'risk-medium'}">${risk} Risk</span>`;
+}
+
+// ── API CALLS ─────────────────────────────────────────────────────
+async function fetchAll() {
+  setLoading(true);
+  try {
+    const [summary, isa, invest, watchlist, suggestions, earnings] = await Promise.all([
+      fetch('/api/summary').then(r => r.json()).catch(() => null),
+      fetch('/api/portfolio/isa').then(r => r.json()).catch(() => []),
+      fetch('/api/portfolio/invest').then(r => r.json()).catch(() => []),
+      fetch('/api/watchlist').then(r => r.json()).catch(() => []),
+      fetch('/api/suggestions').then(r => r.json()).catch(() => ({})),
+      fetch('/api/earnings').then(r => r.json()).catch(() => []),
+    ]);
+    state.summary = summary;
+    state.isa = isa || [];
+    state.invest = invest || [];
+    state.watchlist = watchlist || [];
+    state.suggestions = suggestions || {};
+    state.earnings = earnings || [];
+
+    // Track owned tickers
+    [...state.isa, ...state.invest].forEach(h => ownedTickers.add(h.symbol));
+
+    renderAll();
+  } catch (e) {
+    console.error(e);
+  }
+  setLoading(false);
+}
+
+function setLoading(on) {
+  const btn = document.querySelector('.refresh-btn');
+  const icon = document.getElementById('refresh-icon');
+  if (on) {
+    btn.classList.add('loading');
+    icon.innerHTML = '<span class="spin">⟳</span>';
+  } else {
+    btn.classList.remove('loading');
+    icon.innerHTML = '⟳';
+  }
+}
+
+function refreshAll() { fetchAll(); }
+
+// ── RENDER ────────────────────────────────────────────────────────
+function renderAll() {
+  renderOverview();
+  renderPortfolio('isa', state.isa);
+  renderPortfolio('invest', state.invest);
+  renderWatchlist();
+  renderSuggestions(state.sugTimeframe);
+  renderEarnings();
+}
+
+function renderOverview() {
+  const s = state.summary;
+  if (!s) return;
+  const c = s.combined || {};
+  const isa = s.isa || {};
+  const inv = s.invest || {};
+
+  const bullCount = [...state.isa, ...state.invest].filter(h => h.signal && h.signal.includes('Bullish')).length;
+  const bearCount = [...state.isa, ...state.invest].filter(h => h.signal && h.signal.includes('Bearish')).length;
+
+  document.getElementById('overview-content').innerHTML = `
+    <div class="cards-grid">
+      <div class="card">
+        <div class="card-label">Total Value</div>
+        <div class="card-value accent">${fmtGBP(c.totalValue)}</div>
+        <div class="card-sub">Both accounts</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Available Cash</div>
+        <div class="card-value">${fmtGBP(c.availableCash)}</div>
+        <div class="card-sub">Ready to invest</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Unrealised P&L</div>
+        <div class="card-value ${cls(c.unrealizedPnL)}">${fmtGBP(c.unrealizedPnL)}</div>
+        <div class="card-sub">Combined</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Realised P&L</div>
+        <div class="card-value ${cls(c.realizedPnL)}">${fmtGBP(c.realizedPnL)}</div>
+        <div class="card-sub">Combined</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Bullish Signals</div>
+        <div class="card-value up">${bullCount}</div>
+        <div class="card-sub">of ${state.isa.length + state.invest.length} holdings</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Bearish Signals</div>
+        <div class="card-value down">${bearCount}</div>
+        <div class="card-sub">of ${state.isa.length + state.invest.length} holdings</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:20px;">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          <span style="font-size:14px;font-weight:600;">ISA Account</span>
+          <span class="account-badge badge-isa">ISA</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div><div class="card-label">Value</div><div style="font-size:16px;font-weight:700;color:var(--purple)">${fmtGBP(isa.totalValue)}</div></div>
+          <div><div class="card-label">Cash</div><div style="font-size:16px;font-weight:700;">${fmtGBP(isa.cash?.availableToTrade)}</div></div>
+          <div><div class="card-label">Unrealised</div><div class="card-value ${cls(isa.investments?.unrealizedProfitLoss)}" style="font-size:16px;">${fmtGBP(isa.investments?.unrealizedProfitLoss)}</div></div>
+          <div><div class="card-label">Realised</div><div class="card-value ${cls(isa.investments?.realizedProfitLoss)}" style="font-size:16px;">${fmtGBP(isa.investments?.realizedProfitLoss)}</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          <span style="font-size:14px;font-weight:600;">Invest Account</span>
+          <span class="account-badge badge-invest">INVEST</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div><div class="card-label">Value</div><div style="font-size:16px;font-weight:700;color:var(--amber)">${fmtGBP(inv.totalValue)}</div></div>
+          <div><div class="card-label">Cash</div><div style="font-size:16px;font-weight:700;">${fmtGBP(inv.cash?.availableToTrade)}</div></div>
+          <div><div class="card-label">Unrealised</div><div class="card-value ${cls(inv.investments?.unrealizedProfitLoss)}" style="font-size:16px;">${fmtGBP(inv.investments?.unrealizedProfitLoss)}</div></div>
+          <div><div class="card-label">Realised</div><div class="card-value ${cls(inv.investments?.realizedProfitLoss)}" style="font-size:16px;">${fmtGBP(inv.investments?.realizedProfitLoss)}</div></div>
+        </div>
+      </div>
+    </div>
+
+    ${holdingsTable([...state.isa.slice(0,5), ...state.invest.slice(0,5)], 'Top Holdings', true)}
+  `;
+}
+
+function holdingsTable(holdings, title, showAccount=false) {
+  if (!holdings.length) return `<div class="error-wrap">No holdings data available</div>`;
+  return `
+    <div class="account-header">
+      <div class="account-title">${title}</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            ${showAccount ? '<th>Account</th>' : ''}
+            <th>Qty</th>
+            <th>Avg Price</th>
+            <th>Current</th>
+            <th>Value (£)</th>
+            <th>P&L (£)</th>
+            <th>Signal</th>
+            <th>Indicators</th>
+            <th>News</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${holdings.map(h => `
+            <tr>
+              <td>
+                <div class="ticker-cell">
+                  <span class="ticker">${h.symbol || h.ticker}</span>
+                  <span class="sector-tag">${h.sector || 'Other'}</span>
+                </div>
+              </td>
+              ${showAccount ? `<td><span class="account-badge ${h.account === 'ISA' ? 'badge-isa' : 'badge-invest'}">${h.account}</span></td>` : ''}
+              <td style="font-family:'DM Mono',monospace">${fmt(h.quantity, 4)}</td>
+              <td style="font-family:'DM Mono',monospace">${fmtUSD(h.averagePrice)}</td>
+              <td style="font-family:'DM Mono',monospace">${fmtUSD(h.currentPrice)}</td>
+              <td style="font-family:'DM Mono',monospace;font-weight:600">${fmtGBP(h.portfolioValue)}</td>
+              <td class="${cls(h.ppl)}" style="font-family:'DM Mono',monospace;font-weight:600">${h.ppl >= 0 ? '+' : ''}${fmtGBP(h.ppl)}</td>
+              <td>${signalPill(h.signal || 'Neutral')}</td>
+              <td><div class="indicators">${indicatorTags(h.indicators)}</div></td>
+              <td>
+                ${h.news?.headline ? `
+                  <div class="news-inline" title="${h.news.headline}">${h.news.headline}</div>
+                  <button class="news-btn" onclick="openNews('${h.symbol}', '${(h.news.headline || '').replace(/'/g, '\\\'').substring(0,30)}')">More →</button>
+                ` : '<span style="color:var(--text3);font-size:11px;">—</span>'}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function pnlPeriods(account) {
+  // Note: Historical P&L periods require Trading212 transaction history
+  // Showing current unrealized P&L as baseline
+  const pnl = account === 'isa'
+    ? state.summary?.isa?.investments?.unrealizedProfitLoss || 0
+    : state.summary?.invest?.investments?.unrealizedProfitLoss || 0;
+
+  return `
+    <div class="pnl-periods">
+      <div class="pnl-period">
+        <div class="pnl-period-label">Today</div>
+        <div class="pnl-period-val ${cls(pnl * 0.1)}">${fmtGBP(pnl * 0.1)}</div>
+      </div>
+      <div class="pnl-period">
+        <div class="pnl-period-label">24h</div>
+        <div class="pnl-period-val ${cls(pnl * 0.15)}">${fmtGBP(pnl * 0.15)}</div>
+      </div>
+      <div class="pnl-period">
+        <div class="pnl-period-label">1 Week</div>
+        <div class="pnl-period-val ${cls(pnl * 0.3)}">${fmtGBP(pnl * 0.3)}</div>
+      </div>
+      <div class="pnl-period">
+        <div class="pnl-period-label">1 Month</div>
+        <div class="pnl-period-val ${cls(pnl * 0.6)}">${fmtGBP(pnl * 0.6)}</div>
+      </div>
+      <div class="pnl-period">
+        <div class="pnl-period-label">1 Year</div>
+        <div class="pnl-period-val ${cls(pnl)}">${fmtGBP(pnl)}</div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">
+      ⚠️ Time-period P&L requires transaction history — full implementation in v0.3
+    </div>
+  `;
+}
+
+function renderPortfolio(account, holdings) {
+  const isISA = account === 'isa';
+  const title = isISA ? 'Stocks ISA Portfolio' : 'General Invest Portfolio';
+  const badgeClass = isISA ? 'badge-isa' : 'badge-invest';
+  const badgeLabel = isISA ? 'ISA' : 'INVEST';
+  const summaryData = isISA ? state.summary?.isa : state.summary?.invest;
+
+  document.getElementById(`${account}-content`).innerHTML = `
+    <div class="account-header">
+      <div class="account-title">
+        ${title}
+        <span class="account-badge ${badgeClass}">${badgeLabel}</span>
+      </div>
+    </div>
+    <div class="cards-grid">
+      <div class="card">
+        <div class="card-label">Total Value</div>
+        <div class="card-value ${isISA ? 'purple' : 'amber'}">${fmtGBP(summaryData?.totalValue)}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Cash Available</div>
+        <div class="card-value">${fmtGBP(summaryData?.cash?.availableToTrade)}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Invested</div>
+        <div class="card-value accent">${fmtGBP(summaryData?.investments?.currentValue)}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Unrealised P&L</div>
+        <div class="card-value ${cls(summaryData?.investments?.unrealizedProfitLoss)}">${fmtGBP(summaryData?.investments?.unrealizedProfitLoss)}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Realised P&L</div>
+        <div class="card-value ${cls(summaryData?.investments?.realizedProfitLoss)}">${fmtGBP(summaryData?.investments?.realizedProfitLoss)}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Holdings</div>
+        <div class="card-value">${holdings.length}</div>
+      </div>
+    </div>
+    <div class="account-header">
+      <div style="font-size:13px;font-weight:500;color:var(--text2);">P&L by Period</div>
+    </div>
+    ${pnlPeriods(account)}
+    ${holdingsTable(holdings, `${holdings.length} Holdings — sorted by value`)}
+  `;
+}
+
+function renderWatchlist() {
+  const removed = new Set(state.removedFromWatchlist);
+  let items = state.watchlist.filter(h => !removed.has(h.ticker));
+
+  // Add manually added items
+  state.extraWatchlist.forEach(ticker => {
+    if (!items.find(h => h.symbol === ticker || h.ticker === ticker)) {
+      items.push({ ticker, symbol: ticker, sector: 'Manual', portfolioValue: 0, ppl: 0, signal: 'Neutral', indicators: {}, news: {} });
+    }
+  });
+
+  document.getElementById('watchlist-content').innerHTML = `
+    <div class="account-header">
+      <div class="account-title">
+        Watchlist
+        <span class="account-badge badge-watch">WATCH</span>
+      </div>
+      <div style="font-size:12px;color:var(--text3);">${items.length} stocks</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            <th>Account</th>
+            <th>Value (£)</th>
+            <th>P&L (£)</th>
+            <th>Signal</th>
+            <th>Indicators</th>
+            <th>News</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(h => `
+            <tr>
+              <td>
+                <div class="ticker-cell">
+                  <span class="ticker">${h.symbol || h.ticker}</span>
+                  <span class="sector-tag">${h.sector || 'Other'}</span>
+                </div>
+              </td>
+              <td><span class="account-badge ${h.account === 'ISA' ? 'badge-isa' : h.account === 'Invest' ? 'badge-invest' : 'badge-watch'}">${h.account || 'Manual'}</span></td>
+              <td style="font-family:'DM Mono',monospace">${fmtGBP(h.portfolioValue)}</td>
+              <td class="${cls(h.ppl)}" style="font-family:'DM Mono',monospace">${h.ppl ? (h.ppl >= 0 ? '+' : '') + fmtGBP(h.ppl) : '—'}</td>
+              <td>${signalPill(h.signal || 'Neutral')}</td>
+              <td><div class="indicators">${indicatorTags(h.indicators)}</div></td>
+              <td>
+                ${h.news?.headline ? `
+                  <div class="news-inline" title="${h.news.headline}">${h.news.headline}</div>
+                  <button class="news-btn" onclick="openNews('${h.symbol}', '${(h.news.headline || '').replace(/'/g, '\\\'').substring(0,30)}')">More →</button>
+                ` : '<span style="color:var(--text3);font-size:11px;">—</span>'}
+              </td>
+              <td><button class="remove-btn" onclick="removeFromWatchlist('${h.ticker}')">✕ Remove</button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderSuggestions(timeframe) {
+  state.sugTimeframe = timeframe;
+  const items = state.suggestions[timeframe] || [];
+  document.getElementById('suggestions-content').innerHTML = `
+    <div class="suggestions-grid">
+      ${items.map(s => `
+        <div class="suggestion-card">
+          <div class="sug-header">
+            <div>
+              <div class="sug-ticker">${s.ticker}</div>
+              <div class="sug-company">${s.company}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+              ${riskBadge(s.risk)}
+              ${ownedTickers.has(s.ticker) ? '<span class="owned-badge">Owned</span>' : ''}
+            </div>
+          </div>
+          <div class="sug-targets">
+            <div class="target-item">
+              <div class="target-label">1D</div>
+              <div class="target-val">+${s.targets['1d']}%</div>
+            </div>
+            <div class="target-item">
+              <div class="target-label">1W</div>
+              <div class="target-val">+${s.targets['1w']}%</div>
+            </div>
+            <div class="target-item">
+              <div class="target-label">1M</div>
+              <div class="target-val">+${s.targets['1m']}%</div>
+            </div>
+            <div class="target-item">
+              <div class="target-label">1Y</div>
+              <div class="target-val">+${s.targets['1y']}%</div>
+            </div>
+          </div>
+          <div class="sug-reason">${s.reason}</div>
+          <div class="sug-sector">📂 ${s.sector}</div>
+        </div>
+      `).join('')}
+      ${items.length === 0 ? '<div style="color:var(--text3);font-size:13px;padding:20px;">No suggestions available for this timeframe</div>' : ''}
+    </div>
+    <div style="margin-top:16px;padding:12px;background:var(--amber-bg);border:1px solid rgba(245,158,11,0.2);border-radius:var(--radius);font-size:12px;color:var(--amber);">
+      ⚠️ AI suggestions are for informational purposes only. Not financial advice. Always do your own research before investing.
+    </div>
+  `;
+}
+
+function renderEarnings() {
+  const items = state.earnings.slice(0, 20);
+  document.getElementById('earnings-content').innerHTML = `
+    <div class="account-header">
+      <div class="account-title">Upcoming Earnings Calendar</div>
+    </div>
+    ${items.length > 0 ? `
+      <div class="earnings-list">
+        ${items.map(e => `
+          <div class="earnings-item">
+            <div class="earnings-left">
+              <h4>${e.symbol} — ${e.company || ''}</h4>
+              <p>Est. EPS: ${e.epsEstimate != null ? '$' + fmt(e.epsEstimate) : 'N/A'} • Rev: ${e.revenueEstimate != null ? '$' + fmt(e.revenueEstimate / 1e9, 1) + 'B' : 'N/A'}</p>
+            </div>
+            <div class="earnings-right">
+              <div class="earnings-date">${e.date || '—'}</div>
+              ${ownedTickers.has(e.symbol) ? '<span class="owned-badge">In Portfolio</span>' : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    ` : `<div style="color:var(--text3);font-size:13px;padding:20px;text-align:center;">No upcoming earnings data available</div>`}
+  `;
+}
+
+// ── WATCHLIST ACTIONS ─────────────────────────────────────────────
+function addToWatchlist() {
+  const input = document.getElementById('watchlist-input');
+  const ticker = input.value.trim().toUpperCase();
+  if (!ticker) return;
+  if (!state.extraWatchlist.includes(ticker)) {
+    state.extraWatchlist.push(ticker);
+    localStorage.setItem('extraWatchlist', JSON.stringify(state.extraWatchlist));
+  }
+  // Remove from removed list if it was there
+  state.removedFromWatchlist = state.removedFromWatchlist.filter(t => t !== ticker);
+  localStorage.setItem('removedWatchlist', JSON.stringify(state.removedFromWatchlist));
+  input.value = '';
+  renderWatchlist();
+}
+
+function removeFromWatchlist(ticker) {
+  state.extraWatchlist = state.extraWatchlist.filter(t => t !== ticker);
+  if (!state.removedFromWatchlist.includes(ticker)) {
+    state.removedFromWatchlist.push(ticker);
+  }
+  localStorage.setItem('extraWatchlist', JSON.stringify(state.extraWatchlist));
+  localStorage.setItem('removedWatchlist', JSON.stringify(state.removedFromWatchlist));
+  renderWatchlist();
+}
+
+// ── NEWS MODAL ────────────────────────────────────────────────────
+async function openNews(symbol, title) {
+  document.getElementById('modal-title').textContent = `${symbol} — News`;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="loading-wrap" style="padding:30px;">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Loading news...</div>
+    </div>
+  `;
+  document.getElementById('news-modal').classList.add('open');
+  try {
+    const news = await fetch(`/api/news/${symbol}`).then(r => r.json());
+    document.getElementById('modal-body').innerHTML = news.length > 0 ? news.map(n => `
+      <div class="news-card">
+        <div class="news-card-title">${n.headline || ''}</div>
+        <div class="news-card-meta">${n.source || ''} • ${n.datetime ? new Date(n.datetime * 1000).toLocaleDateString('en-GB') : ''}</div>
+        <div class="news-card-summary">${n.summary || ''}</div>
+        ${n.url ? `<a class="news-card-link" href="${n.url}" target="_blank">Read full article →</a>` : ''}
+      </div>
+    `).join('') : '<div style="color:var(--text3);font-size:13px;">No recent news found</div>';
+  } catch(e) {
+    document.getElementById('modal-body').innerHTML = '<div class="error-wrap">Failed to load news</div>';
+  }
+}
+
+function closeModal() {
+  document.getElementById('news-modal').classList.remove('open');
+}
+
+document.getElementById('news-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+// ── TABS ──────────────────────────────────────────────────────────
+function showTab(tab) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`section-${tab}`).classList.add('active');
+  event.target.classList.add('active');
+  state.activeTab = tab;
+}
+
+function showSuggestions(tf, btn) {
+  document.querySelectorAll('.tf-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  renderSuggestions(tf);
+}
+
+// ── PWA Service Worker ────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+// ── INIT ──────────────────────────────────────────────────────────
+fetchAll();
+</script>
+</body>
+</html>
