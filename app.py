@@ -83,7 +83,15 @@ def basic_holding(h, account):
 
 @app.route('/')
 def index():
-    return send_from_directory(BASE_DIR, 'index.html')
+    try:
+        path = os.path.join(BASE_DIR, 'index.html')
+        print(f'BASE_DIR: {BASE_DIR}')
+        print(f'index.html path: {path}')
+        print(f'File exists: {os.path.exists(path)}')
+        print(f'Files in BASE_DIR: {os.listdir(BASE_DIR)}')
+        return send_from_directory(BASE_DIR, 'index.html')
+    except Exception as e:
+        return f'Error: {e} | BASE_DIR: {BASE_DIR} | Files: {os.listdir(BASE_DIR)}', 500
 
 @app.route('/manifest.json')
 def manifest():
