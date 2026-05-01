@@ -680,10 +680,28 @@ function renderHeatmap(holdings, containerId) {
   return '<div class="heatmap-grid">'+cells+'</div>';
 }
 
+
+// Name cache
+const nameCache = JSON.parse(sessionStorage.getItem('nameCache')||'{}');
+
+async function fetchName(symbol) {
+    if(nameCache[symbol]!==undefined) return nameCache[symbol];
+    try{
+        const d = await get('/api/profile/'+symbol);
+        nameCache[symbol] = d.name||'';
+        sessionStorage.setItem('nameCache', JSON.stringify(nameCache));
+        // Update all name cells
+        document.querySelectorAll('[data-symbol="'+symbol+'"] .stock-name').forEach(el=>{
+            el.textContent = d.name||'';
+        });
+        return d.name||'';
+    }catch(e){ return ''; }
+}
+
 async function refreshAll(){
   setLoad(true);
   // Clear caches on full refresh
-  S.indCache = {}; S.newsCache = {}; newsLoaded=false;
+  S.indCache = {}; S.newsCache = {}; newsLoaded=false; sessionStorage.removeItem("nameCache");
   sessionStorage.removeItem('indCache');
   sessionStorage.removeItem('newsCache');
   fetchQueue = [];
@@ -704,6 +722,7 @@ async function refreshAll(){
     get('/api/earnings').then(earn=>{S.earnings=earn||[];renderEarnings();}).catch(()=>{});
     const allSymbols=[...new Set([...S.isa,...S.invest].map(h=>h.symbol).filter(Boolean))];
     queueFetch(allSymbols);
+    allSymbols.forEach(s=>fetchName(s));
   }catch(e){console.error(e);setLoad(false);}
 }
 
@@ -729,7 +748,7 @@ function holdingRow(h, showAcct){
   const hasInd= Object.keys(ind).length>0;
   return `
     <tr data-symbol="${sym}">
-      <td><div><div class="tick">${sym}</div>${h.name?`<div style="font-size:10px;color:var(--text2);margin-top:1px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.name)}</div>`:''}<div class="stag">${h.sector||'Other'}</div></div></td>
+      <td><div><div class="tick">${sym}</div>`<div class="stock-name" style="font-size:10px;color:var(--text2);margin-top:1px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nameCache[sym]||h.name||''  )}</div>`+'<div class="stag">${h.sector||'Other'}</div></div></td>
       ${showAcct?`<td><span class="badge ${h.account==='ISA'?'b-isa':'b-inv'}">${h.account}</span></td>`:''}
       <td class="mono">${f(h.quantity,4)}</td>
       <td class="mono">${h.currency==="USD"?$(h.averagePrice):gbp(h.averagePrice)}</td>
@@ -850,7 +869,7 @@ function renderWatchlist(){
             const hasInd=Object.keys(ind).length>0;
             return `
               <tr data-symbol="${sym}">
-                <td><div><div class="tick">${sym}</div>${h.name?`<div style="font-size:10px;color:var(--text2);margin-top:1px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.name)}</div>`:''}<div class="stag">${h.sector||'Other'}</div></div></td>
+                <td><div><div class="tick">${sym}</div>`<div class="stock-name" style="font-size:10px;color:var(--text2);margin-top:1px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nameCache[sym]||h.name||''  )}</div>`+'<div class="stag">${h.sector||'Other'}</div></div></td>
                 <td><span class="badge ${h.account==='ISA'?'b-isa':h.account==='Invest'?'b-inv':'b-wat'}">${h.account||'Manual'}</span></td>
                 <td class="mono">${£(h.portfolioValue)}</td>
                 <td class="mono ${cls(h.ppl)}">${h.ppl!=null?(h.ppl>=0?'+':'')+£(h.ppl):'-'}</td>

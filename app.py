@@ -57,21 +57,6 @@ def clean_symbol(ticker):
 def is_us_stock(ticker):
     return '_US_EQ' in ticker
 
-# Company name cache to avoid repeated API calls
-NAME_CACHE = {}
-
-def get_company_name(symbol):
-    if symbol in NAME_CACHE: return NAME_CACHE[symbol]
-    try:
-        profile = fh('stock/profile2', {'symbol': symbol})
-        name = profile.get('name', '')
-        if name:
-            NAME_CACHE[symbol] = name
-            return name
-    except: pass
-    NAME_CACHE[symbol] = ''
-    return ''
-
 def basic_holding(h, account):
     ticker = h.get('ticker', '')
     symbol = clean_symbol(ticker)
@@ -80,11 +65,10 @@ def basic_holding(h, account):
     ppl    = h.get('ppl') or 0
     us     = is_us_stock(ticker)
     portfolio_value = round((qty * avg) + ppl, 2)
-    name = get_company_name(symbol)
     return {
         **h,
         'symbol':         symbol,
-        'name':           name,
+        'name':           '',
         'sector':         SECTOR_MAP.get(symbol, 'Other'),
         'portfolioValue': portfolio_value,
         'currency':       'USD' if us else 'GBP',
@@ -261,6 +245,12 @@ def api_watchlist():
         t = h.get('ticker')
         if t and t not in seen: seen[t] = basic_holding(h, 'Invest')
     return jsonify({'data': sorted(seen.values(), key=lambda x: x.get('portfolioValue', 0), reverse=True)})
+
+
+@app.route('/api/profile/<symbol>')
+def api_profile(symbol):
+    profile = fh('stock/profile2', {'symbol': symbol})
+    return jsonify({'name': profile.get('name',''), 'industry': profile.get('finnhubIndustry','')})
 
 @app.route('/api/indicators/<symbol>')
 def api_indicators(symbol):
