@@ -4,6 +4,7 @@ import requests
 import os
 import time
 import re
+import math
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
@@ -56,20 +57,34 @@ def clean_symbol(ticker):
 def is_us_stock(ticker):
     return '_US_EQ' in ticker
 
+# Company name cache to avoid repeated API calls
+NAME_CACHE = {}
+
+def get_company_name(symbol):
+    if symbol in NAME_CACHE: return NAME_CACHE[symbol]
+    try:
+        profile = fh('stock/profile2', {'symbol': symbol})
+        name = profile.get('name', '')
+        if name:
+            NAME_CACHE[symbol] = name
+            return name
+    except: pass
+    NAME_CACHE[symbol] = ''
+    return ''
+
 def basic_holding(h, account):
-    ticker  = h.get('ticker', '')
-    symbol  = clean_symbol(ticker)
-    qty     = h.get('quantity', 0) or 0
-    avg     = h.get('averagePrice', 0) or 0
-    ppl     = h.get('ppl') or 0
-    us      = is_us_stock(ticker)
-    # Approximate GBP value: cost_basis + ppl
-    # For US stocks cost is in USD so this is approximate
-    # For UK stocks cost is in GBP so this is accurate
+    ticker = h.get('ticker', '')
+    symbol = clean_symbol(ticker)
+    qty    = h.get('quantity', 0) or 0
+    avg    = h.get('averagePrice', 0) or 0
+    ppl    = h.get('ppl') or 0
+    us     = is_us_stock(ticker)
     portfolio_value = round((qty * avg) + ppl, 2)
+    name = get_company_name(symbol)
     return {
         **h,
         'symbol':         symbol,
+        'name':           name,
         'sector':         SECTOR_MAP.get(symbol, 'Other'),
         'portfolioValue': portfolio_value,
         'currency':       'USD' if us else 'GBP',
@@ -77,6 +92,118 @@ def basic_holding(h, account):
         'indicators':     {},
         'signal':         'Loading...',
         'news':           {},
+    }
+
+# ── INDICATOR CALCULATIONS ────────────────────────────────────────
+
+def calc_rsi(closes, period=14):
+    if len(closes) < period + 1: return None
+    gains, losses = [], []
+    for i in range(1, len(closes)):
+        diff = closes[i] - closes[i-1]
+        gains.append(max(diff, 0))
+        losses.append(max(-diff, 0))
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period-1) + gains[i]) / period
+        avg_loss = (avg_loss * (period-1) + losses[i]) / period
+    if avg_loss == 0: return 100.0
+    rs = avg_gain / avg_loss
+    return round(100 - (100 / (1 + rs)), 2)
+
+def calc_ema(closes, period):
+    if len(closes) < period: return []
+    k = 2 / (period + 1)
+    ema = [sum(closes[:period]) / period]
+    for price in closes[period:]:
+        ema.append(price * k + ema[-1] * (1 - k))
+    return ema
+
+def calc_macd(closes, fast=12, slow=26, signal=9):
+    if len(closes) < slow + signal: return None, None, None
+    ema_fast = calc_ema(closes, fast)
+    ema_slow = calc_ema(closes, slow)
+    min_len = min(len(ema_fast), len(ema_slow))
+    macd_line = [ema_fast[-(min_len-i)] - ema_slow[-(min_len-i)] for i in range(min_len)]
+    if len(macd_line) < signal: return None, None, None
+    signal_line = calc_ema(macd_line, signal)
+    if not signal_line: return None, None, None
+    macd_val = macd_line[-1]
+    sig_val  = signal_line[-1]
+    hist_val = macd_val - sig_val
+    return round(macd_val, 4), round(sig_val, 4), round(hist_val, 4)
+
+def calc_bbands(closes, period=20, std_mult=2):
+    if len(closes) < period: return None, None, None
+    window = closes[-period:]
+    mean = sum(window) / period
+    variance = sum((x - mean)**2 for x in window) / period
+    std = math.sqrt(variance)
+    return round(mean + std_mult*std, 2), round(mean, 2), round(mean - std_mult*std, 2)
+
+def calc_sma(closes, period):
+    if len(closes) < period: return None
+    return round(sum(closes[-period:]) / period, 2)
+
+def get_candles(symbol, resolution='D', days=300):
+    to_ts   = int(time.time())
+    from_ts = to_ts - (days * 86400)
+    data = fh('stock/candle', {'symbol': symbol, 'resolution': resolution, 'from': from_ts, 'to': to_ts})
+    if not data or data.get('s') != 'ok': return [], [], []
+    return data.get('c', []), data.get('t', []), data.get('v', [])
+
+def compute_indicators(symbol):
+    closes, timestamps, volumes = get_candles(symbol)
+    if not closes or len(closes) < 30:
+        return {'rsi':None,'macd':None,'macd_signal':None,'macd_hist':None,
+                'bb_upper':None,'bb_middle':None,'bb_lower':None,
+                'ma50':None,'ma200':None,'signal':'Neutral',
+                'overbought':False,'oversold':False,
+                'closes':[],'timestamps':[],'volumes':[]}
+
+    rsi   = calc_rsi(closes)
+    macd, macd_sig, macd_hist = calc_macd(closes)
+    bb_upper, bb_middle, bb_lower = calc_bbands(closes)
+    ma50  = calc_sma(closes, 50)
+    ma200 = calc_sma(closes, 200)
+
+    # Signal scoring
+    score = 0
+    if rsi is not None:
+        if rsi < 30:   score += 2
+        elif rsi < 45: score += 1
+        elif rsi > 70: score -= 2
+        elif rsi > 55: score -= 1
+    if macd is not None and macd_sig is not None:
+        score += 1 if macd > macd_sig else -1
+    if ma50 is not None and ma200 is not None:
+        score += 1 if ma50 > ma200 else -1
+    if ma50 is not None and closes:
+        score += 1 if closes[-1] > ma50 else -1
+
+    if   score >= 3:  signal = 'Strong Bullish'
+    elif score >= 1:  signal = 'Bullish'
+    elif score <= -3: signal = 'Strong Bearish'
+    elif score <= -1: signal = 'Bearish'
+    else:             signal = 'Neutral'
+
+    return {
+        'rsi':        rsi,
+        'macd':       macd,
+        'macd_signal':macd_sig,
+        'macd_hist':  macd_hist,
+        'bb_upper':   bb_upper,
+        'bb_middle':  bb_middle,
+        'bb_lower':   bb_lower,
+        'ma50':       ma50,
+        'ma200':      ma200,
+        'signal':     signal,
+        'overbought': rsi > 70 if rsi else False,
+        'oversold':   rsi < 30 if rsi else False,
+        'closes':     closes[-60:],
+        'timestamps': timestamps[-60:],
+        'volumes':    volumes[-60:],
     }
 
 HTML_CONTENT = open('index.html', 'r', encoding='utf-8').read()
@@ -87,8 +214,7 @@ def index():
 
 @app.route('/manifest.json')
 def manifest():
-    m = '{"name":"TradingAssist-NTv0.1","short_name":"TradingAssist","start_url":"/","display":"standalone","background_color":"#0b0f1c","theme_color":"#0b0f1c"}'
-    return Response(m, mimetype='application/json')
+    return Response('{"name":"TradingAssist-NTv0.1","short_name":"TradingAssist","start_url":"/","display":"standalone","background_color":"#0b0f1c","theme_color":"#0b0f1c"}', mimetype='application/json')
 
 @app.route('/sw.js')
 def sw():
@@ -138,93 +264,23 @@ def api_watchlist():
 
 @app.route('/api/indicators/<symbol>')
 def api_indicators(symbol):
-    result = {
-        'rsi': None, 'macd': None, 'macd_signal': None,
-        'bb_upper': None, 'bb_lower': None, 'bb_middle': None,
-        'ma50': None, 'ma200': None, 'signal': 'Neutral',
-        'overbought': False, 'oversold': False, 'adx': None,
-        'trend': None
-    }
-    try:
-        # Use aggregate indicator endpoint - ONE call instead of 5!
-        agg = fh('scan/technical-indicator', {'symbol': symbol, 'resolution': 'D'})
-        if agg and agg.get('technicalAnalysis'):
-            ta = agg['technicalAnalysis']
-            result['signal'] = ta.get('signal', 'neutral').capitalize()
-            # Map to our signal format
-            sig = ta.get('signal', '').lower()
-            if sig == 'strong_buy':   result['signal'] = 'Strong Bullish'
-            elif sig == 'buy':        result['signal'] = 'Bullish'
-            elif sig == 'strong_sell':result['signal'] = 'Strong Bearish'
-            elif sig == 'sell':       result['signal'] = 'Bearish'
-            else:                     result['signal'] = 'Neutral'
+    return jsonify(compute_indicators(symbol))
 
-        # Also get individual indicators
-        if agg and agg.get('indicators'):
-            inds = agg['indicators']
-            # RSI
-            if inds.get('oscillators'):
-                for o in inds['oscillators']:
-                    if o.get('name') == 'RSI':
-                        result['rsi'] = round(o.get('value', 0), 2)
-                        result['overbought'] = result['rsi'] > 70
-                        result['oversold']   = result['rsi'] < 30
-            # Moving averages
-            if inds.get('moving_averages'):
-                mas = inds['moving_averages']
-                for ma in mas:
-                    if ma.get('name') == 'SMA50':  result['ma50']  = round(ma.get('value', 0), 2)
-                    if ma.get('name') == 'SMA200': result['ma200'] = round(ma.get('value', 0), 2)
-                    if ma.get('name') == 'MACD':   result['macd']  = round(ma.get('value', 0), 4)
-
-        # If aggregate didn't work, fall back to individual RSI call
-        if result['rsi'] is None:
-            to_ts   = int(time.time())
-            from_ts = to_ts - (300 * 86400)
-            base    = {'symbol': symbol, 'resolution': 'D', 'from': from_ts, 'to': to_ts}
-
-            r = fh('indicator', {**base, 'indicator': 'rsi', 'timeperiod': 14})
-            if r.get('rsi'): result['rsi'] = round(r['rsi'][-1], 2)
-
-            r = fh('indicator', {**base, 'indicator': 'macd', 'fastperiod': 12, 'slowperiod': 26, 'signalperiod': 9})
-            if r.get('macd'):       result['macd']        = round(r['macd'][-1], 4)
-            if r.get('macdSignal'): result['macd_signal'] = round(r['macdSignal'][-1], 4)
-
-            r = fh('indicator', {**base, 'indicator': 'bbands', 'timeperiod': 20})
-            if r.get('upperBand'):  result['bb_upper']  = round(r['upperBand'][-1], 2)
-            if r.get('lowerBand'):  result['bb_lower']  = round(r['lowerBand'][-1], 2)
-            if r.get('middleBand'): result['bb_middle'] = round(r['middleBand'][-1], 2)
-
-            r = fh('indicator', {**base, 'indicator': 'sma', 'timeperiod': 50})
-            if r.get('sma'): result['ma50'] = round(r['sma'][-1], 2)
-
-            r = fh('indicator', {**base, 'indicator': 'sma', 'timeperiod': 200})
-            if r.get('sma'): result['ma200'] = round(r['sma'][-1], 2)
-
-            # Score-based signal from individual indicators
-            rsi = result['rsi']
-            if rsi:
-                result['overbought'] = rsi > 70
-                result['oversold']   = rsi < 30
-            score = 0
-            if rsi:
-                if rsi < 30:   score += 2
-                elif rsi < 45: score += 1
-                elif rsi > 70: score -= 2
-                elif rsi > 55: score -= 1
-            if result['macd'] and result['macd_signal']:
-                score += 1 if result['macd'] > result['macd_signal'] else -1
-            if result['ma50'] and result['ma200']:
-                score += 1 if result['ma50'] > result['ma200'] else -1
-            if   score >= 3:  result['signal'] = 'Strong Bullish'
-            elif score >= 1:  result['signal'] = 'Bullish'
-            elif score <= -3: result['signal'] = 'Strong Bearish'
-            elif score <= -1: result['signal'] = 'Bearish'
-            else:             result['signal'] = 'Neutral'
-
-    except Exception as e:
-        print(f'Indicator error {symbol}: {e}')
-    return jsonify(result)
+@app.route('/api/stock/<symbol>')
+def api_stock_detail(symbol):
+    ind  = compute_indicators(symbol)
+    today     = datetime.now().strftime('%Y-%m-%d')
+    month_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    news = fh('company-news', {'symbol': symbol, 'from': month_ago, 'to': today})
+    profile = fh('stock/profile2', {'symbol': symbol})
+    quote   = fh('quote', {'symbol': symbol})
+    return jsonify({
+        'symbol':     symbol,
+        'indicators': ind,
+        'news':       news[:20] if isinstance(news, list) else [],
+        'profile':    profile,
+        'quote':      quote,
+    })
 
 @app.route('/api/news/<symbol>')
 def api_news(symbol):
