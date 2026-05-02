@@ -311,7 +311,12 @@ HTML_CONTENT = open("index.html", "r", encoding="utf-8").read()
 
 @app.route("/")
 def index():
-    return Response(HTML_CONTENT, mimetype="text/html; charset=utf-8")
+    try:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'index.html')
+        html = open(path, 'r', encoding='utf-8').read()
+        return Response(html, mimetype='text/html; charset=utf-8')
+    except Exception as e:
+        return Response('<h1>Loading...</h1><script>setTimeout(()=>location.reload(),3000)</script>', mimetype='text/html')
 
 @app.route("/manifest.json")
 def manifest():
