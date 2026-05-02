@@ -49,7 +49,7 @@ NAME_MAP = {
     'IONQ':'IonQ Inc','RXRX':'Recursion Pharma','ALAB':'Astera Labs',
     'RKLB':'Rocket Lab USA','DDOG':'Datadog Inc','NET':'Cloudflare Inc',
     'PATH':'UiPath Inc','LUNR':'Intuitive Machines','ACHR':'Archer Aviation',
-    'BITF':'Bitfarms Ltd','RIOT':'Riot Platforms','SOUN':'SoundHound AI',
+    'BITF':'Keel Infrastructure','RIOT':'Riot Platforms','SOUN':'SoundHound AI',
     'QUBT':'Quantum Computing Inc','INTC':'Intel Corp','QCOM':'Qualcomm Inc',
     'AVGO':'Broadcom Inc','TSM':'Taiwan Semiconductor','ARM3':'Arm Holdings',
     'SOXL':'Direxion Semi Bull 3X','SEMI':'iShares Semiconductor ETF',
@@ -116,8 +116,9 @@ def t212_get(endpoint, auth):
 def fh(endpoint, params={}):
     try:
         p = dict(params); p["token"] = FINNHUB_KEY
-        r = requests.get(f"{FINNHUB_BASE}/{endpoint}", params=p, timeout=10)
+        r = requests.get(f"{FINNHUB_BASE}/{endpoint}", params=p, timeout=15)
         if r.status_code == 200: return r.json()
+        print(f"FH {endpoint} returned {r.status_code}")
     except Exception as e: print(f"FH error {endpoint}: {e}")
     return {}
 
@@ -351,6 +352,11 @@ def basic_holding(h, account):
         h_copy["priceInPence"]  = True
         h_copy["penceAvg"]      = round(avg, 2)
         h_copy["penceCurrent"]  = round(h.get("currentPrice", 0) or 0, 2)
+        # Get underlying stock price for reference
+        if lev_info and lev_info.get("underlying"):
+            uq = _quote_cache.get(lev_info["underlying"], {})
+            h_copy["underlyingSymbol"] = lev_info["underlying"]
+            h_copy["underlyingPrice"]  = uq.get("c")
 
     return {
         **h_copy,
@@ -501,8 +507,8 @@ MARKET_CAP = {
 @app.route("/api/earnings")
 def api_earnings():
     # Check cache first
-    if cache_valid(_earnings_cache.get("data"), EARNINGS_TTL):
-        return jsonify(_earnings_cache["data"])
+    if cache_valid(_earnings_cache.get("entry"), EARNINGS_TTL):
+        return jsonify(_earnings_cache["entry"]["data"])
 
     today  = datetime.now().strftime("%Y-%m-%d")
     future = (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
@@ -511,15 +517,20 @@ def api_earnings():
     # Fetch both in parallel using threads
     import concurrent.futures
     def fetch_upcoming():
-        return fh("calendar/earnings", {"from": today, "to": future})
+        return fh("calendar/earnings", {"from": today, "to": future}) or {}
     def fetch_past():
-        return fh("calendar/earnings", {"from": past, "to": today})
+        return fh("calendar/earnings", {"from": past, "to": today}) or {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-        f_up   = ex.submit(fetch_upcoming)
-        f_past = ex.submit(fetch_past)
-        upcoming_data = f_up.result()
-        past_data     = f_past.result()
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            f_up   = ex.submit(fetch_upcoming)
+            f_past = ex.submit(fetch_past)
+            upcoming_data = f_up.result(timeout=20)
+            past_data     = f_past.result(timeout=20)
+    except Exception as e:
+        print(f"Earnings parallel fetch error: {e}")
+        upcoming_data = {}
+        past_data     = {}
 
     owned = _bg_symbols
 
@@ -580,8 +591,7 @@ def api_earnings():
     result = {"upcoming": upcoming, "past": past_list}
 
     # Cache the result
-    _earnings_cache["data"] = result
-    _earnings_cache["ts"]   = time.time()
+    _earnings_cache["entry"] = {"data": result, "ts": time.time()}
 
     # Background: pre-fetch quotes for top earnings stocks
     def prefetch_earnings_quotes():
