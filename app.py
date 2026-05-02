@@ -63,6 +63,31 @@ NAME_MAP = {
     'ARKG':'ARK Genomic Revolution ETF','BRK.B':'Berkshire Hathaway',
 }
 
+
+# Leveraged product detection
+LEVERAGE_MAP = {
+    '3AMDl_EQ': {'leverage': '3x', 'underlying': 'AMD',  'name': '3x AMD ETP'},
+    '2MUl_EQ':  {'leverage': '2x', 'underlying': 'MU',   'name': '2x Micron ETP'},
+    '3PLTl_EQ': {'leverage': '3x', 'underlying': 'PLTR', 'name': '3x Palantir ETP'},
+    '3TSMl_EQ': {'leverage': '3x', 'underlying': 'TSM',  'name': '3x Taiwan Semi ETP'},
+    '3HODl_EQ': {'leverage': '2x', 'underlying': 'OIL',  'name': '2x Crude Oil ETP'},
+    'SOXLl_EQ': {'leverage': '3x', 'underlying': 'SOXX', 'name': '3x Semiconductor ETF'},
+    'ARM3l_EQ': {'leverage': '3x', 'underlying': 'ARM',  'name': '3x Arm Holdings ETP'},
+    'SEMIl_EQ': {'leverage': '1x', 'underlying': 'SOXX', 'name': 'Semiconductor ETF'},
+    'EQQQl_EQ': {'leverage': '1x', 'underlying': 'QQQ',  'name': 'Invesco EQQQ Nasdaq'},
+    'RRl_EQ':   {'leverage': '1x', 'underlying': 'RR',   'name': 'Rolls-Royce Holdings'},
+}
+
+def get_leverage_info(ticker):
+    return LEVERAGE_MAP.get(ticker, None)
+
+def get_indicator_symbol(ticker, symbol):
+    """Get the best symbol to use for Finnhub indicators"""
+    info = LEVERAGE_MAP.get(ticker)
+    if info and info.get('underlying'):
+        return info['underlying']
+    return symbol
+
 # ── SERVER-SIDE CACHE ─────────────────────────────────────────────
 _candle_cache  = {}   # symbol -> {closes, timestamps, volumes, ts}
 _ind_cache     = {}   # symbol -> {rsi, macd, ...signal, ts}
@@ -287,24 +312,36 @@ def register_symbols(holdings):
 
 # ── HOLDING BUILDER ───────────────────────────────────────────────
 def basic_holding(h, account):
-    ticker = h.get("ticker", "")
-    symbol = clean_symbol(ticker)
-    qty    = h.get("quantity", 0) or 0
-    avg    = h.get("averagePrice", 0) or 0
-    ppl    = h.get("ppl") or 0
-    us     = is_us(ticker)
+    ticker   = h.get("ticker", "")
+    symbol   = clean_symbol(ticker)
+    qty      = h.get("quantity", 0) or 0
+    avg      = h.get("averagePrice", 0) or 0
+    ppl      = h.get("ppl") or 0
+    us       = is_us(ticker)
+    lev_info = get_leverage_info(ticker)
+    leverage = lev_info["leverage"] if lev_info else None
+    ind_sym  = get_indicator_symbol(ticker, symbol)
+    sector   = SECTOR_MAP.get(symbol, "Other")
+    if lev_info:
+        und = lev_info.get("underlying","")
+        if und in ["AMD","PLTR","ARM","TSM","MU"]: sector = "Leveraged Tech"
+        elif und in ["OIL"]:                        sector = "Leveraged Commodity"
+        elif und in ["SOXX","QQQ"]:                 sector = "Leveraged ETF"
     return {
         **h,
         "symbol":         symbol,
-        "name":           _profile_cache.get(symbol, {}).get("name","") or NAME_MAP.get(symbol,""),
-        "sector":         SECTOR_MAP.get(symbol, "Other"),
+        "name":           _profile_cache.get(symbol, {}).get("name", "") or NAME_MAP.get(symbol,""),
+        "sector":         sector,
         "portfolioValue": round((qty * avg) + ppl, 2),
         "currency":       "USD" if us else "GBP",
         "account":        account,
+        "leverage":       leverage,
+        "indSymbol":      ind_sym,
         "indicators":     {},
         "signal":         "Loading...",
         "news":           {},
     }
+
 
 # ── FLASK ROUTES ──────────────────────────────────────────────────
 HTML_CONTENT = open("index.html", "r", encoding="utf-8").read()
@@ -376,6 +413,10 @@ def api_watchlist():
 
 @app.route("/api/indicators/<symbol>")
 def api_indicators(symbol):
+    # Check if this is a leveraged product ticker - use underlying
+    for ticker, info in LEVERAGE_MAP.items():
+        if clean_symbol(ticker) == symbol and info.get("underlying"):
+            return jsonify(get_indicators(info["underlying"]))
     return jsonify(get_indicators(symbol))
 
 @app.route("/api/stock/<symbol>")
