@@ -419,40 +419,28 @@ def api_quote(symbol):
 
 @app.route("/api/earnings")
 def api_earnings():
-    today    = datetime.now().strftime("%Y-%m-%d")
-    future   = (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
-    past     = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    today  = datetime.now().strftime("%Y-%m-%d")
+    future = (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
+    past   = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
 
     upcoming_data = fh("calendar/earnings", {"from": today, "to": future})
-    past_data     = fh("calendar/earnings", {"from": past, "to": today})
+    past_data     = fh("calendar/earnings", {"from": past,  "to": today})
 
     def enrich(item):
-        sym = item.get("symbol","")
-        # Get quote for current price and change
-        q = get_quote(sym) if sym else {}
-        # Get profile for company name
-        p = _profile_cache.get(sym,{})
+        sym  = item.get("symbol","")
+        p    = _profile_cache.get(sym,{})
         name = p.get("name","") or NAME_MAP.get(sym,"")
+        q    = _quote_cache.get(sym,{})
         return {
             **item,
-            "companyName":      name,
-            "currentPrice":     q.get("c"),
-            "priceChange":      q.get("d"),
-            "priceChangePct":   q.get("dp"),
-            "inPortfolio":      sym in owned_symbols(),
+            "companyName":    name,
+            "currentPrice":   q.get("c"),
+            "priceChange":    q.get("d"),
+            "priceChangePct": q.get("dp"),
+            "inPortfolio":    sym in _bg_symbols,
         }
 
-    def owned_symbols():
-        isa    = t212_get("equity/portfolio", ISA_AUTH) or []
-        invest = t212_get("equity/portfolio", INVEST_AUTH) or []
-        syms = set()
-        for h in (isa if isinstance(isa,list) else []):
-            syms.add(clean_symbol(h.get("ticker","")))
-        for h in (invest if isinstance(invest,list) else []):
-            syms.add(clean_symbol(h.get("ticker","")))
-        return syms
-
-    upcoming = [enrich(e) for e in (upcoming_data.get("earningsCalendar") or [])[:40]]
+    upcoming  = [enrich(e) for e in (upcoming_data.get("earningsCalendar") or [])[:40]]
     past_list = [enrich(e) for e in (past_data.get("earningsCalendar") or [])[:40]]
 
     return jsonify({"upcoming": upcoming, "past": past_list})
