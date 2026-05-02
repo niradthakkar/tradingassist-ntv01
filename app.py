@@ -89,15 +89,17 @@ def get_indicator_symbol(ticker, symbol):
     return symbol
 
 # ── SERVER-SIDE CACHE ─────────────────────────────────────────────
-_candle_cache  = {}   # symbol -> {closes, timestamps, volumes, ts}
-_ind_cache     = {}   # symbol -> {rsi, macd, ...signal, ts}
-_profile_cache = {}   # symbol -> {name, industry, ts}
-_quote_cache   = {}   # symbol -> {c, d, dp, h, l, ts}
+_candle_cache   = {}   # symbol -> {closes, timestamps, volumes, ts}
+_ind_cache      = {}   # symbol -> {rsi, macd, ...signal, ts}
+_profile_cache  = {}   # symbol -> {name, industry, ts}
+_quote_cache    = {}   # symbol -> {c, d, dp, h, l, ts}
+_earnings_cache = {}   # "upcoming"/"past" -> {data, ts}
 
-CANDLE_TTL  = 3600    # 1 hour
-IND_TTL     = 3600
-PROFILE_TTL = 86400   # 24 hours
-QUOTE_TTL   = 300     # 5 minutes
+CANDLE_TTL   = 3600    # 1 hour
+IND_TTL      = 3600
+PROFILE_TTL  = 86400   # 24 hours
+QUOTE_TTL    = 300     # 5 minutes
+EARNINGS_TTL = 3600    # 1 hour
 
 def cache_valid(entry, ttl):
     return entry and (time.time() - entry.get('ts', 0)) < ttl
@@ -327,13 +329,37 @@ def basic_holding(h, account):
         if und in ["AMD","PLTR","ARM","TSM","MU"]: sector = "Leveraged Tech"
         elif und in ["OIL"]:                        sector = "Leveraged Commodity"
         elif und in ["SOXX","QQQ"]:                 sector = "Leveraged ETF"
+
+    # UK-listed ETPs (l_EQ suffix) have prices in PENCE not pounds
+    # e.g. 3AMDl_EQ currentPrice=247.5 means 247.5p = £2.475
+    is_uk_etp = ticker.endswith("l_EQ") and not us
+    if is_uk_etp:
+        # Convert pence to pounds for display
+        current_price_gbp = (h.get("currentPrice", 0) or 0) / 100
+        avg_price_gbp     = avg / 100
+        portfolio_value   = round(qty * current_price_gbp, 2)
+    else:
+        current_price_gbp = h.get("currentPrice", 0) or 0
+        avg_price_gbp     = avg
+        portfolio_value   = round((qty * avg) + ppl, 2)
+
+    # Build modified holding with corrected prices
+    h_copy = dict(h)
+    if is_uk_etp:
+        h_copy["currentPrice"]  = round(current_price_gbp, 4)
+        h_copy["averagePrice"]  = round(avg_price_gbp, 4)
+        h_copy["priceInPence"]  = True
+        h_copy["penceAvg"]      = round(avg, 2)
+        h_copy["penceCurrent"]  = round(h.get("currentPrice", 0) or 0, 2)
+
     return {
-        **h,
+        **h_copy,
         "symbol":         symbol,
         "name":           _profile_cache.get(symbol, {}).get("name", "") or NAME_MAP.get(symbol,""),
         "sector":         sector,
-        "portfolioValue": round((qty * avg) + ppl, 2),
-        "currency":       "USD" if us else "GBP",
+        "portfolioValue": portfolio_value,
+        "currency":       "GBP",
+        "isUkEtp":        is_uk_etp,
         "account":        account,
         "leverage":       leverage,
         "indSymbol":      ind_sym,
@@ -458,33 +484,116 @@ def api_market_news(category):
 def api_quote(symbol):
     return jsonify(get_quote(symbol))
 
+# Market cap tiers for earnings sorting (approx, in billions USD)
+MARKET_CAP = {
+    'AAPL':3000,'MSFT':2900,'NVDA':2800,'GOOGL':2000,'AMZN':1900,'META':1400,
+    'TSLA':800,'AVGO':700,'LLY':700,'V':550,'JPM':500,'UNH':480,'XOM':460,
+    'MA':430,'JNJ':380,'PG':370,'COST':360,'HD':360,'MRK':290,'ABBV':280,
+    'CVX':280,'KO':260,'PEP':240,'BAC':230,'WMT':720,'ORCL':380,'CRM':300,
+    'AMD':220,'INTC':180,'QCOM':170,'TXN':160,'NFLX':280,'ADBE':220,
+    'PYPL':70,'PLTR':170,'CRWD':90,'NET':30,'SNOW':40,'DDOG':40,
+    'SOFI':10,'HOOD':15,'COIN':50,'MSTR':30,'RBLX':20,'SHOP':100,
+    'UBER':150,'RIVN':10,'HIMS':5,'SQ':40,'AMGN':160,'GILD':90,
+    'REGN':90,'MRNA':20,'BNTX':20,'ZM':15,'DOCU':15,'TWLO':10,
+    'MELI':90,'SE':30,'GRAB':10,'BABA':200,'JD':30,'PDD':180,
+}
+
 @app.route("/api/earnings")
 def api_earnings():
+    # Check cache first
+    if cache_valid(_earnings_cache.get("data"), EARNINGS_TTL):
+        return jsonify(_earnings_cache["data"])
+
     today  = datetime.now().strftime("%Y-%m-%d")
     future = (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
     past   = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
 
-    upcoming_data = fh("calendar/earnings", {"from": today, "to": future})
-    past_data     = fh("calendar/earnings", {"from": past,  "to": today})
+    # Fetch both in parallel using threads
+    import concurrent.futures
+    def fetch_upcoming():
+        return fh("calendar/earnings", {"from": today, "to": future})
+    def fetch_past():
+        return fh("calendar/earnings", {"from": past, "to": today})
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        f_up   = ex.submit(fetch_upcoming)
+        f_past = ex.submit(fetch_past)
+        upcoming_data = f_up.result()
+        past_data     = f_past.result()
+
+    owned = _bg_symbols
+
+    def get_eps_verdict(actual, estimate):
+        if actual is None or estimate is None: return None
+        diff_pct = ((actual - estimate) / abs(estimate)) * 100 if estimate != 0 else 0
+        if diff_pct > 5:   return "Exceeded"
+        if diff_pct > -5:  return "Met Expectations"
+        return "Missed"
+
+    def get_rev_verdict(actual, estimate):
+        if actual is None or estimate is None: return None
+        diff_pct = ((actual - estimate) / abs(estimate)) * 100 if estimate != 0 else 0
+        if diff_pct > 2:   return "Exceeded"
+        if diff_pct > -2:  return "Met Expectations"
+        return "Missed"
 
     def enrich(item):
-        sym  = item.get("symbol","")
-        p    = _profile_cache.get(sym,{})
-        name = p.get("name","") or NAME_MAP.get(sym,"")
-        q    = _quote_cache.get(sym,{})
+        sym   = item.get("symbol","")
+        p     = _profile_cache.get(sym,{})
+        name  = p.get("name","") or NAME_MAP.get(sym,"")
+        q     = _quote_cache.get(sym,{})
+        mcap  = MARKET_CAP.get(sym, 0)
+        in_p  = sym in owned
+        price = q.get("c") or 0
+
+        # Skip penny stocks not in portfolio
+        if price > 0 and price < 5 and not in_p:
+            return None
+
+        eps_a = item.get("epsActual")
+        eps_e = item.get("epsEstimate")
+        rev_a = item.get("revenueActual")
+        rev_e = item.get("revenueEstimate")
+
         return {
             **item,
             "companyName":    name,
-            "currentPrice":   q.get("c"),
+            "currentPrice":   price if price else None,
             "priceChange":    q.get("d"),
             "priceChangePct": q.get("dp"),
-            "inPortfolio":    sym in _bg_symbols,
+            "inPortfolio":    in_p,
+            "marketCap":      mcap,
+            "epsVerdict":     get_eps_verdict(eps_a, eps_e),
+            "revVerdict":     get_rev_verdict(rev_a, rev_e),
+            "epsSurprisePct": round(((eps_a-eps_e)/abs(eps_e))*100,1) if eps_a is not None and eps_e else None,
+            "revSurprisePct": round(((rev_a-rev_e)/abs(rev_e))*100,1) if rev_a is not None and rev_e else None,
         }
 
-    upcoming  = [enrich(e) for e in (upcoming_data.get("earningsCalendar") or [])[:40]]
-    past_list = [enrich(e) for e in (past_data.get("earningsCalendar") or [])[:40]]
+    def sort_earnings(items):
+        enriched = [e for e in [enrich(i) for i in items] if e is not None]
+        enriched.sort(key=lambda x: (0 if x["inPortfolio"] else 1, -x["marketCap"]))
+        return enriched[:50]
 
-    return jsonify({"upcoming": upcoming, "past": past_list})
+    upcoming  = sort_earnings(upcoming_data.get("earningsCalendar") or [])
+    past_list = sort_earnings(past_data.get("earningsCalendar") or [])
+
+    result = {"upcoming": upcoming, "past": past_list}
+
+    # Cache the result
+    _earnings_cache["data"] = result
+    _earnings_cache["ts"]   = time.time()
+
+    # Background: pre-fetch quotes for top earnings stocks
+    def prefetch_earnings_quotes():
+        all_syms = list({e["symbol"] for e in upcoming+past_list})[:20]
+        for sym in all_syms:
+            if not cache_valid(_quote_cache.get(sym), QUOTE_TTL):
+                get_quote(sym)
+                time.sleep(0.2)
+    threading.Thread(target=prefetch_earnings_quotes, daemon=True).start()
+
+    return jsonify(result)
+
 
 @app.route("/api/cache/status")
 def api_cache_status():
