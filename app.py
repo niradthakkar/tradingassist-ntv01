@@ -93,7 +93,7 @@ _candle_cache   = {}   # symbol -> {closes, timestamps, volumes, ts}
 _ind_cache      = {}   # symbol -> {rsi, macd, ...signal, ts}
 _profile_cache  = {}   # symbol -> {name, industry, ts}
 _quote_cache    = {}   # symbol -> {c, d, dp, h, l, ts}
-_earnings_cache = {}   # "upcoming"/"past" -> {data, ts}
+_earnings_cache = {}   # {entry: {data, ts}}
 
 CANDLE_TTL   = 3600    # 1 hour
 IND_TTL      = 3600
@@ -580,13 +580,22 @@ def api_earnings():
             "revSurprisePct": round(((rev_a-rev_e)/abs(rev_e))*100,1) if rev_a is not None and rev_e else None,
         }
 
-    def sort_earnings(items):
+    def sort_upcoming(items):
+        """Portfolio first, then by date ascending, then market cap"""
         enriched = [e for e in [enrich(i) for i in items] if e is not None]
-        enriched.sort(key=lambda x: (0 if x["inPortfolio"] else 1, -x["marketCap"]))
-        return enriched[:50]
+        portfolio = sorted([e for e in enriched if e["inPortfolio"]], key=lambda x: (x.get("date",""), -x["marketCap"]))
+        others    = sorted([e for e in enriched if not e["inPortfolio"]], key=lambda x: (x.get("date",""), -x["marketCap"]))
+        return (portfolio + others)[:50]
 
-    upcoming  = sort_earnings(upcoming_data.get("earningsCalendar") or [])
-    past_list = sort_earnings(past_data.get("earningsCalendar") or [])
+    def sort_past(items):
+        """Portfolio first, then by date descending (most recent first), then market cap"""
+        enriched = [e for e in [enrich(i) for i in items] if e is not None]
+        portfolio = sorted([e for e in enriched if e["inPortfolio"]], key=lambda x: (x.get("date",""), -x["marketCap"]), reverse=True)
+        others    = sorted([e for e in enriched if not e["inPortfolio"]], key=lambda x: x.get("date",""), reverse=True)
+        return (portfolio + others)[:50]
+
+    upcoming  = sort_upcoming(upcoming_data.get("earningsCalendar") or [])
+    past_list = sort_past(past_data.get("earningsCalendar") or [])
 
     result = {"upcoming": upcoming, "past": past_list}
 
