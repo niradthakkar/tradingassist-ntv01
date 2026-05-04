@@ -10,8 +10,54 @@ app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 # ── PATHS ─────────────────────────────────────────────────────────────
 USERS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.json')
 
-# ── USER STORAGE ──────────────────────────────────────────────────────
+# ── USER STORAGE (PostgreSQL with file fallback) ─────────────────────
+import base64
+
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+
+def get_db():
+    """Get PostgreSQL connection"""
+    import psycopg2
+    import psycopg2.extras
+    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    return conn
+
+def init_db():
+    """Create users table if it doesn't exist"""
+    if not DATABASE_URL:
+        return
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                email TEXT PRIMARY KEY,
+                data JSONB NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("Database initialised successfully")
+    except Exception as e:
+        print(f"Database init error: {e}")
+
 def load_users():
+    """Load all users from PostgreSQL or file fallback"""
+    if DATABASE_URL:
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT email, data FROM users")
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            return {row[0]: row[1] for row in rows}
+        except Exception as e:
+            print(f"DB load error: {e}")
+    # File fallback
     if os.path.exists(USERS_FILE):
         try:
             with open(USERS_FILE) as f: return json.load(f)
@@ -19,14 +65,55 @@ def load_users():
     return {}
 
 def save_users(users):
-    with open(USERS_FILE, 'w') as f:
-        json.dump(users, f, indent=2)
+    """Save all users to PostgreSQL or file fallback"""
+    if DATABASE_URL:
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            for email, data in users.items():
+                import psycopg2.extras
+                cur.execute("""
+                    INSERT INTO users (email, data, updated_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (email) DO UPDATE
+                    SET data = EXCLUDED.data, updated_at = NOW()
+                """, (email, json.dumps(data)))
+            conn.commit()
+            cur.close()
+            conn.close()
+            return
+        except Exception as e:
+            print(f"DB save error: {e}")
+    # File fallback
+    try:
+        with open(USERS_FILE, 'w') as f:
+            json.dump(users, f, indent=2)
+    except Exception as e:
+        print(f"File save error: {e}")
+
+def get_user(username):
+    """Get single user efficiently from DB"""
+    if DATABASE_URL:
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT data FROM users WHERE email = %s", (username,))
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            return row[0] if row else None
+        except Exception as e:
+            print(f"DB get_user error: {e}")
+    # File fallback
+    return load_users().get(username)
+
+# Initialise database on startup
+init_db()
 
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-def get_user(username):
-    return load_users().get(username)
+# get_user defined in storage section above
 
 def current_user():
     return session.get('username')
@@ -983,8 +1070,14 @@ def api_suggestions():
 @app.route('/api/cache/status')
 @require_login
 def api_cache_status():
-    return jsonify({"candles":len(_candle_cache),"indicators":len(_ind_cache),
-                    "profiles":len(_profile_cache),"quotes":len(_quote_cache),"bg_symbols":len(_bg_symbols)})
+    user_count = len(load_users())
+    return jsonify({
+        "candles":len(_candle_cache),"indicators":len(_ind_cache),
+        "profiles":len(_profile_cache),"quotes":len(_quote_cache),
+        "bg_symbols":len(_bg_symbols),
+        "users":user_count,
+        "db_connected":bool(DATABASE_URL)
+    })
 
 if __name__=="__main__":
     port=int(os.environ.get("PORT",5000))
