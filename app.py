@@ -214,6 +214,50 @@ BROKER_REGISTRY = {
         'key_hint':    '',
         'help_steps':  [],
     },
+    'webull': {
+        'name':        'Webull',
+        'shortname':   'Webull',
+        'group':       'Webull',
+        'status':      'coming_soon',
+        'region':      'US',
+        'description': 'Commission-free US stock trading',
+        'key_label':   'API Key',
+        'key_hint':    '',
+        'help_steps':  [],
+    },
+    'td_ameritrade': {
+        'name':        'TD Ameritrade / Schwab',
+        'shortname':   'Schwab',
+        'group':       'TD Ameritrade',
+        'status':      'coming_soon',
+        'region':      'US',
+        'description': 'Full service US brokerage',
+        'key_label':   'API Key',
+        'key_hint':    '',
+        'help_steps':  [],
+    },
+    'fidelity': {
+        'name':        'Fidelity',
+        'shortname':   'Fidelity',
+        'group':       'Fidelity',
+        'status':      'coming_soon',
+        'region':      'US',
+        'description': 'Full service US brokerage',
+        'key_label':   'API Key',
+        'key_hint':    '',
+        'help_steps':  [],
+    },
+    'coinbase': {
+        'name':        'Coinbase',
+        'shortname':   'Coinbase',
+        'group':       'Coinbase',
+        'status':      'coming_soon',
+        'region':      'Global',
+        'description': 'Crypto exchange with public API',
+        'key_label':   'API Key',
+        'key_hint':    '',
+        'help_steps':  [],
+    },
     'etoro': {
         'name':        'eToro',
         'shortname':   'eToro',
@@ -303,11 +347,12 @@ def cache_valid(entry, ttl):
 # ── API HELPERS ───────────────────────────────────────────────────────
 def t212_get(endpoint, api_key):
     try:
+        # Trading212 API accepts the key directly in Authorization header
         r = requests.get(
             f"https://live.trading212.com/api/v0/{endpoint}",
-            headers={"Authorization": api_key}, timeout=15)
+            headers={"Authorization": api_key.strip()}, timeout=15)
         if r.status_code == 200: return r.json()
-        print(f"T212 {endpoint} returned {r.status_code}")
+        print(f"T212 {endpoint} returned {r.status_code}: {r.text[:200]}")
     except Exception as e: print(f"T212 error: {e}")
     return None
 
@@ -569,11 +614,15 @@ def register():
     name    = data.get('name','').strip()
     phone   = data.get('phone','').strip()
     address = data.get('address','').strip()
+    postcode= data.get('postcode','').strip()
+    country = data.get('country','').strip()
     # Validate all required fields
     if not email:    return jsonify({'error':'Email address is required'}),400
     if not name:     return jsonify({'error':'Full name is required'}),400
     if not phone:    return jsonify({'error':'Phone number is required'}),400
-    if not address:  return jsonify({'error':'Address is required'}),400
+    if not address:  return jsonify({'error':'Street address is required'}),400
+    if not postcode: return jsonify({'error':'Postcode is required'}),400
+    if not country:  return jsonify({'error':'Please select your country'}),400
     if not password: return jsonify({'error':'Password is required'}),400
     if '@' not in email or '.' not in email:
         return jsonify({'error':'Please enter a valid email address'}),400
@@ -596,6 +645,8 @@ def register():
         'email':email,
         'phone':phone,
         'address':address,
+        'postcode':postcode,
+        'country':country,
         'password':hash_password(password),
         'created':datetime.now().isoformat(),
         'role':'admin' if not users else 'user',
@@ -629,7 +680,7 @@ def me():
     if not username: return jsonify({'authenticated':False}),401
     user=get_user(username)
     if not user: return jsonify({'authenticated':False}),401
-    return jsonify({'authenticated':True,'username':username,'name':user.get('name',username),'email':user.get('email',''),'phone':user.get('phone',''),'address':user.get('address',''),'role':user.get('role','user'),'accounts':user.get('accounts',[])})
+    return jsonify({'authenticated':True,'username':username,'name':user.get('name',username),'email':user.get('email',''),'phone':user.get('phone',''),'address':user.get('address',''),'postcode':user.get('postcode',''),'country':user.get('country',''),'role':user.get('role','user'),'accounts':user.get('accounts',[])})
 
 # ── FLASK ROUTES — ACCOUNTS ───────────────────────────────────────────
 @app.route('/api/accounts', methods=['GET'])
@@ -694,11 +745,20 @@ def test_account():
         return jsonify({'success':False,'message':'This broker is not yet supported'})
     if 'trading212' in broker:
         result = t212_get('equity/account/summary', api_key)
-        if result:
-            acct_id = result.get('id','')
-            val     = result.get('totalValue',0)
+        if result and isinstance(result, dict):
+            val = result.get('totalValue',0)
             return jsonify({'success':True,'message':f'Connected! Account value: £{val:,.2f}'})
-        return jsonify({'success':False,'message':'Connection failed. Please check your API key and try again.'})
+        # Try portfolio endpoint as fallback
+        port = t212_get('equity/portfolio', api_key)
+        if port and isinstance(port, list):
+            return jsonify({'success':True,'message':f'Connected! {len(port)} holdings found.'})
+        # Try to get our outbound IP to show user
+        try:
+            ip_resp = requests.get('https://api.ipify.org', timeout=5)
+            our_ip = ip_resp.text.strip()
+        except:
+            our_ip = 'unknown'
+        return jsonify({'success':False,'message':f'Connection failed. Please check: (1) API key is correct and complete, (2) Key matches account type (ISA key for ISA, Invest key for Invest), (3) In Trading212 API settings, whitelist this IP: {our_ip}'})
     return jsonify({'success':False,'message':'Broker integration coming soon'})
 
 @app.route('/api/user/profile', methods=['POST'])
@@ -706,7 +766,7 @@ def test_account():
 def update_profile():
     data=request.json or {}
     users=load_users(); username=current_user()
-    for field in ['name','email','phone','address']:
+    for field in ['name','phone','address','postcode','country']:
         if field in data:
             users[username][field]=data[field].strip()
     save_users(users)

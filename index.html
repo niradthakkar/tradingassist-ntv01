@@ -204,7 +204,32 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
       <div class="form-group"><label class="form-label">Full Name *</label><input class="form-input" id="reg-name" placeholder="John Smith"></div>
       <div class="form-group"><label class="form-label">Email Address * <span style="font-size:10px;color:var(--text3)">(used to log in)</span></label><input class="form-input" id="reg-email" type="email" placeholder="john@example.com"></div>
       <div class="form-group"><label class="form-label">Phone Number *</label><input class="form-input" id="reg-phone" type="tel" placeholder="+44 7700 000000"></div>
-      <div class="form-group"><label class="form-label">Address *</label><input class="form-input" id="reg-address" placeholder="123 Street, City, Postcode"></div>
+      <div class="form-group"><label class="form-label">Street Address *</label><input class="form-input" id="reg-address" placeholder="123 High Street"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Postcode *</label><input class="form-input" id="reg-postcode" placeholder="SW1A 1AA"></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Country *</label>
+          <select class="form-input" id="reg-country">
+            <option value="">Select country...</option>
+            <option value="GB">United Kingdom</option>
+            <option value="US">United States</option>
+            <option value="IN">India</option>
+            <option value="CA">Canada</option>
+            <option value="AU">Australia</option>
+            <option value="DE">Germany</option>
+            <option value="FR">France</option>
+            <option value="ES">Spain</option>
+            <option value="IT">Italy</option>
+            <option value="NL">Netherlands</option>
+            <option value="SE">Sweden</option>
+            <option value="NO">Norway</option>
+            <option value="DK">Denmark</option>
+            <option value="CH">Switzerland</option>
+            <option value="SG">Singapore</option>
+            <option value="AE">UAE</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+      </div>
       <div class="form-group">
         <label class="form-label">Password *</label>
         <input class="form-input" id="reg-pass" type="password" placeholder="Min 8 characters" oninput="checkPwStrength(this.value)">
@@ -244,7 +269,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
   </div>
 </div>
 <div class="nav" id="main-nav">
-  <button class="ntab active" data-tab="overview" onclick="showTab('overview',this)">Overview</button>
+  <button class="ntab active" data-tab="overview" onclick="showTab('overview',this)">My Portfolio</button>
   <!-- Account tabs injected dynamically -->
   <button class="ntab" data-tab="watchlist" onclick="showTab('watchlist',this)">Watchlist</button>
   <button class="ntab" data-tab="suggestions" onclick="showTab('suggestions',this)">AI Suggestions</button>
@@ -340,14 +365,18 @@ function doRegister(){
   if(!name){showAuthErr('Full name is required');return;}
   if(!email){showAuthErr('Email address is required');return;}
   if(!phone){showAuthErr('Phone number is required');return;}
-  if(!address){showAuthErr('Address is required');return;}
+  var postcode=document.getElementById('reg-postcode').value.trim();
+  var country=document.getElementById('reg-country').value.trim();
+  if(!address){showAuthErr('Street address is required');return;}
+  if(!postcode){showAuthErr('Postcode is required');return;}
+  if(!country){showAuthErr('Please select your country');return;}
   if(!p){showAuthErr('Password is required');return;}
   if(p!==p2){showAuthErr('Passwords do not match');return;}
   if(p.length<8){showAuthErr('Password must be at least 8 characters');return;}
   var hasUpper=/[A-Z]/.test(p),hasLower=/[a-z]/.test(p),hasDigit=/[0-9]/.test(p),hasSpecial=/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(p);
   if([hasUpper,hasLower,hasDigit,hasSpecial].filter(Boolean).length<3){showAuthErr('Password too weak. Use uppercase, lowercase, number and special character.');return;}
   document.getElementById('reg-btn').disabled=true;
-  post('/api/auth/register',{name:name,email:email,phone:phone,address:address,password:p}).then(function(r){
+  post('/api/auth/register',{name:name,email:email,phone:phone,address:address,postcode:postcode,country:country,password:p}).then(function(r){
     if(r.error){showAuthErr(r.error);document.getElementById('reg-btn').disabled=false;}
     else{showApp(r);refreshAll();}
   }).catch(function(){showAuthErr('Connection error. Try again.');document.getElementById('reg-btn').disabled=false;});
@@ -380,7 +409,7 @@ function getSentiment(h,s){var t=(h+' '+s).toLowerCase();var bull=['beat','surge
 function sentPill(sent){var m={'bull':['sent-bull','Bullish'],'bear':['sent-bear','Bearish'],'neut':['sent-neut','Neutral'],'critical':['sent-crit','Critical']};var c=m[sent]||['sent-neut','Neutral'];return '<span class="news-sent '+c[0]+'">'+c[1]+'</span>';}
 function newsCard(n,ticker){var sent=getSentiment(n.headline||'',n.summary||'');var date=n.datetime?new Date(n.datetime*1000).toLocaleDateString('en-GB'):'';return '<div class="news-item"><div class="news-item-top">'+sentPill(sent)+(ticker?'<span class="news-ticker">'+ticker+'</span>':'')+'<span class="news-source">'+esc(n.source||'')+'</span><span class="news-date">'+date+'</span></div><div class="news-headline">'+esc(n.headline||'')+'</div><div class="news-summary">'+esc((n.summary||'').substring(0,150))+'</div>'+(n.url?'<a class="news-link" href="'+n.url+'" target="_blank" rel="noopener">Read full article</a>':'')+'</div>';}
 function loadNews(){if(newsLoaded){renderNewsTab('portfolio');return;}document.getElementById('news-c').innerHTML='<div class="ldg"><div class="sp"></div><p>Loading news...</p></div>';var topSyms=[],seen={};allHoldings().forEach(function(h){if(!seen[h.symbol]&&topSyms.length<10){seen[h.symbol]=1;topSyms.push(h.symbol);}});var pNews=[];var chain=Promise.resolve();topSyms.forEach(function(sym){chain=chain.then(function(){return api('/api/news/'+sym).then(function(news){if(news&&news.length) news.slice(0,3).forEach(function(n){pNews.push(Object.assign({},n,{ticker:sym}));});}).catch(function(){}).then(function(){return new Promise(function(r){setTimeout(r,200);});});});});chain.then(function(){pNews.sort(function(a,b){return b.datetime-a.datetime;});newsData.portfolio=pNews.slice(0,20);return Promise.all([api('/api/news/market/general').catch(function(){return[];}),api('/api/news/market/crypto').catch(function(){return[];})]);}).then(function(res){newsData.market=(res[0]||[]).slice(0,20);newsData.crypto=(res[1]||[]).slice(0,20);newsLoaded=true;renderNewsTab('portfolio');}).catch(function(){document.getElementById('news-c').innerHTML='<div class="err">Failed to load news</div>';});}
-function renderNewsTab(cat){cat=cat||'portfolio';var criticals=newsData.portfolio.concat(newsData.market).filter(function(n){return getSentiment(n.headline||'',n.summary||'')==='critical';});var items=cat==='portfolio'?newsData.portfolio:cat==='market'?newsData.market:newsData.crypto;var cb='';if(criticals.length){cb='<div class="crit-banner" style="margin-bottom:12px"><div style="font-weight:600;margin-bottom:8px">Breaking / Critical - '+criticals.length+' high-impact items:</div>'+criticals.slice(0,5).map(function(n){return '<div style="margin-top:5px;padding:7px 9px;background:rgba(0,0,0,.25);border-radius:5px;display:flex;align-items:flex-start;gap:8px"><span style="font-size:10px;padding:2px 6px;background:rgba(245,158,11,.2);color:var(--amber);border-radius:4px;white-space:nowrap">'+(n.ticker||'Market')+'</span><span style="font-size:11px">'+esc(n.headline||'')+'</span>'+(n.url?'<a href="'+n.url+'" target="_blank" style="font-size:10px;color:var(--accent);white-space:nowrap;margin-left:auto">Read</a>':'')+'</div>';}).join('')+'</div>';}document.getElementById('news-c').innerHTML=cb+'<div class="news-tabs"><button class="news-tab '+(cat==='portfolio'?'active':'')+'" onclick="renderNewsTab(\'portfolio\')">Portfolio News</button><button class="news-tab '+(cat==='market'?'active':'')+'" onclick="renderNewsTab(\'market\')">Market News</button><button class="news-tab '+(cat==='crypto'?'active':'')+'" onclick="renderNewsTab(\'crypto\')">Crypto News</button></div><div class="news-grid">'+(items.length?items.map(function(n){return newsCard(n,n.ticker);}).join(''):'<div style="color:var(--text3);font-size:12px;padding:20px">No news available</div>')+'</div>';}
+function renderNewsTab(cat){cat=cat||'portfolio';var criticals=newsData.portfolio.concat(newsData.market).filter(function(n){return getSentiment(n.headline||'',n.summary||'')==='critical';});var items=cat==='portfolio'?newsData.portfolio:cat==='market'?newsData.market:newsData.crypto;var cb='';if(criticals.length){cb='<div class="crit-banner" style="margin-bottom:12px"><div style="font-weight:600;margin-bottom:8px">Breaking / Critical - '+criticals.length+' high-impact items:</div>'+criticals.slice(0,5).map(function(n){return '<div style="margin-top:5px;padding:7px 9px;background:rgba(0,0,0,.25);border-radius:5px;display:flex;align-items:flex-start;gap:8px"><span style="font-size:10px;padding:2px 6px;background:rgba(245,158,11,.2);color:var(--amber);border-radius:4px;white-space:nowrap">'+(n.ticker||'Market')+'</span><span style="font-size:11px">'+esc(n.headline||'')+'</span>'+(n.url?'<a href="'+n.url+'" target="_blank" style="font-size:10px;color:var(--accent);white-space:nowrap;margin-left:auto">Read</a>':'')+'</div>';}).join('')+'</div>';}document.getElementById('news-c').innerHTML=cb+'<div class="news-tabs"><button class="news-tab '+(cat==='portfolio'?'active':'')+'" onclick="renderNewsTab(\'portfolio\')">My Portfolio News</button><button class="news-tab '+(cat==='market'?'active':'')+'" onclick="renderNewsTab(\'market\')">Market News</button><button class="news-tab '+(cat==='crypto'?'active':'')+'" onclick="renderNewsTab(\'crypto\')">Crypto News</button></div><div class="news-grid">'+(items.length?items.map(function(n){return newsCard(n,n.ticker);}).join(''):'<div style="color:var(--text3);font-size:12px;padding:20px">No news available</div>')+'</div>';}
 
 // ── DETAIL MODAL ──────────────────────────────────────────────────────
 function openDetail(sym){document.getElementById('detail-sym').textContent=sym;document.getElementById('detail-name').textContent='Loading...';document.getElementById('detail-modal').classList.add('open');document.getElementById('detail-body').innerHTML='<div class="ldg"><div class="sp"></div><p>Loading...</p></div>';api('/api/stock/'+sym).then(function(data){var ind=data.indicators||{},prof=data.profile||{},q=data.quote||{},news=data.news||[];document.getElementById('detail-name').textContent=prof.name||NC[sym]||sym;var sc={'Strong Bullish':'#4ade80','Bullish':'#22c55e','Neutral':'#7a96b8','Bearish':'#ef4444','Strong Bearish':'#f87171'}[ind.signal]||'#7a96b8';var cards='<div class="detail-cards"><div class="detail-card"><div class="clbl">Price</div><div class="cval ac">$'+f2(q.c)+'</div></div><div class="detail-card"><div class="clbl">Change</div><div class="cval '+cls(q.d)+'">'+(q.d>=0?'+':'')+f2(q.d)+' ('+f2(q.dp)+'%)</div></div><div class="detail-card"><div class="clbl">Signal</div><div class="cval" style="font-size:13px;color:'+sc+'">'+(ind.signal||'Neutral')+'</div></div><div class="detail-card"><div class="clbl">Sector</div><div class="cval" style="font-size:13px">'+(prof.industry||'Other')+'</div></div></div>';var inds='<div class="ind-detail-grid"><div class="ind-detail-card"><div class="ind-label">RSI (14)</div><div class="ind-value '+(ind.rsi>70?'dn':ind.rsi<30?'up':'')+'">'+(ind.rsi!=null?f2(ind.rsi):'-')+'</div><div class="ind-desc">'+(ind.overbought?'Overbought':ind.oversold?'Oversold':'Normal range')+'</div></div><div class="ind-detail-card"><div class="ind-label">MACD</div><div class="ind-value '+(ind.macd!=null&&ind.macd_signal!=null?(ind.macd>ind.macd_signal?'up':'dn'):'')+'">'+(ind.macd!=null?f2(ind.macd):'-')+'</div><div class="ind-desc">'+(ind.macd!=null&&ind.macd_signal!=null?(ind.macd>ind.macd_signal?'Bullish crossover':'Bearish crossover'):'Calculating')+'</div></div><div class="ind-detail-card"><div class="ind-label">MACD Signal</div><div class="ind-value">'+(ind.macd_signal!=null?f2(ind.macd_signal):'-')+'</div><div class="ind-desc">Signal line</div></div><div class="ind-detail-card"><div class="ind-label">BB Upper</div><div class="ind-value">'+(ind.bb_upper!=null?'$'+f2(ind.bb_upper):'-')+'</div><div class="ind-desc">Resistance</div></div><div class="ind-detail-card"><div class="ind-label">BB Middle</div><div class="ind-value">'+(ind.bb_middle!=null?'$'+f2(ind.bb_middle):'-')+'</div><div class="ind-desc">20-day avg</div></div><div class="ind-detail-card"><div class="ind-label">BB Lower</div><div class="ind-value">'+(ind.bb_lower!=null?'$'+f2(ind.bb_lower):'-')+'</div><div class="ind-desc">Support</div></div><div class="ind-detail-card"><div class="ind-label">MA 50</div><div class="ind-value">'+(ind.ma50!=null?'$'+f2(ind.ma50):'-')+'</div><div class="ind-desc">50-day avg</div></div><div class="ind-detail-card"><div class="ind-label">MA 200</div><div class="ind-value">'+(ind.ma200!=null?'$'+f2(ind.ma200):'-')+'</div><div class="ind-desc">'+(ind.ma50!=null&&ind.ma200!=null?(ind.ma50>ind.ma200?'Golden Cross':'Death Cross'):'200-day avg')+'</div></div></div>';var nHtml='<div><div class="shdr"><div class="stitle">Latest News</div></div>'+(news.length?news.slice(0,10).map(function(n){var sent=getSentiment(n.headline||'',n.summary||'');var date=n.datetime?new Date(n.datetime*1000).toLocaleDateString('en-GB'):'';return '<div class="nc" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'+sentPill(sent)+'<span style="font-size:10px;color:#3d5470">'+esc(n.source||'')+'</span><span style="font-size:10px;color:#3d5470;margin-left:auto">'+date+'</span></div><div class="nc-t">'+esc(n.headline||'')+'</div><div class="nc-s" style="margin-top:4px">'+esc((n.summary||'').substring(0,200))+'</div>'+(n.url?'<a class="nc-l" href="'+n.url+'" target="_blank" rel="noopener">Read full article</a>':'')+'</div>';}).join(''):'<div style="color:#3d5470;font-size:12px">No recent news</div>')+'</div>';document.getElementById('detail-body').innerHTML=cards+'<div class="chart-wrap"><div class="chart-title">60-Day Price Chart</div><canvas id="pchart" style="width:100%;height:200px"></canvas></div>'+inds+nHtml;drawChart(ind.closes||[],ind.timestamps||[]);}).catch(function(){document.getElementById('detail-body').innerHTML='<div class="err">Failed to load details</div>';});}
@@ -485,10 +514,10 @@ function onBrokerChange(){
   if(statusMsg){
     if(broker.status==='coming_soon'){
       statusMsg.style.display='block';statusMsg.style.background='var(--abg)';statusMsg.style.color='var(--amber)';
-      statusMsg.textContent='Coming Soon — '+broker.description+'. We are working on this integration.';
+      statusMsg.textContent='Integration coming soon. '+broker.name+' has a public API and we are building the connection. Check back for updates.';
     } else if(broker.status==='no_api'){
       statusMsg.style.display='block';statusMsg.style.background='var(--rbg)';statusMsg.style.color='var(--red2)';
-      statusMsg.textContent=broker.name+' does not offer a public API. We cannot connect to this broker automatically.';
+      statusMsg.textContent=broker.name+' does not currently offer a public API for retail users. Automatic connection is not possible at this time.';
     } else {
       statusMsg.style.display='none';
     }
@@ -513,13 +542,15 @@ function showBrokerHelp(){
   var steps=broker.help_steps||[];
   document.getElementById('m-title').textContent='How to get your '+broker.name+' API key';
   document.getElementById('m-body').innerHTML=
-    '<div style="margin-bottom:12px;color:var(--accent2);font-weight:500">'+esc(broker.name)+'</div>'+
+    '<div style="margin-bottom:4px;color:var(--accent2);font-weight:600;font-size:14px">'+esc(broker.name)+'</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:14px">'+esc(broker.region||'')+(broker.description?' &middot; '+esc(broker.description):'')+'</div>'+
     (steps.length?
-      '<ol style="padding-left:18px;color:var(--text2);font-size:12px;line-height:2.2">'+
-        steps.map(function(s){return '<li>'+esc(s)+'</li>';}).join('')+
+      '<ol style="padding-left:18px;color:var(--text2);font-size:12px;line-height:2.4">'+
+        steps.map(function(s,i){return '<li style="margin-bottom:4px">'+esc(s)+'</li>';}).join('')+
       '</ol>'
-    :'<p style="color:var(--text2);font-size:12px">No API key instructions available yet.</p>')+
-    '<div class="notice" style="margin-top:12px">Your API key is stored securely and only used to read your portfolio. TradingAssist cannot place trades.</div>';
+    :'<div style="background:var(--rbg);border:1px solid rgba(239,68,68,.2);border-radius:var(--rs);padding:10px 12px;font-size:12px;color:var(--red2)">'+
+      'This broker does not have a public API available yet. We cannot connect automatically.</div>')+
+    '<div class="notice" style="margin-top:14px">&#128274; Your API key is stored securely on the server. It is only used to read your portfolio data. TradingAssist cannot place trades on your behalf.</div>';
   document.getElementById('modal').classList.add('open');
 }
 function showHelp(broker){document.getElementById('m-title').textContent='How to get your API key';document.getElementById('m-body').innerHTML=BROKER_HELP[broker]||'<p style="color:var(--text2)">No help available for this broker yet.</p>';document.getElementById('modal').classList.add('open');}
@@ -532,10 +563,18 @@ function renderSettings(){
       '<div class="settings-title">&#128100; Profile</div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">'+
         '<div><div class="form-label">Full Name</div><input class="form-input" id="prof-name" value="'+esc(user.name||'')+'"></div>'+
-        '<div><div class="form-label">Email <span style="font-size:10px;color:var(--text3)">(login, cannot change)</span></div><div style="color:var(--text2);font-size:13px;padding:10px 0">'+esc(user.email||user.username||'')+'</div></div>'+
-        '<div><div class="form-label">Email</div><input class="form-input" id="prof-email" type="email" value="'+esc(user.email||'')+'"></div>'+
+        '<div><div class="form-label">Email <span style="font-size:10px;color:var(--text3)">(cannot change)</span></div><div style="color:var(--text2);font-size:13px;padding:10px 0">'+esc(user.email||user.username||'')+'</div></div>'+
         '<div><div class="form-label">Phone</div><input class="form-input" id="prof-phone" type="tel" value="'+esc(user.phone||'')+'"></div>'+
-        '<div style="grid-column:1/-1"><div class="form-label">Address</div><input class="form-input" id="prof-address" value="'+esc(user.address||'')+'"></div>'+
+        '<div><div class="form-label">Account Type</div><div style="padding:6px 0">'+
+          (user.role==='admin'?'<span style="background:rgba(245,158,11,.15);color:var(--amber);padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600">&#9733; Admin</span>':'<span style="background:var(--bg3);color:var(--text2);padding:3px 10px;border-radius:10px;font-size:11px">User</span>')+
+        '</div></div>'+
+        '<div style="grid-column:1/-1"><div class="form-label">Street Address</div><input class="form-input" id="prof-address" value="'+esc(user.address||'')+'"></div>'+
+        '<div><div class="form-label">Postcode</div><input class="form-input" id="prof-postcode" value="'+esc(user.postcode||'')+'"></div>'+
+        '<div><div class="form-label">Country</div>'+
+          '<select class="form-input" id="prof-country">'+
+            ['','GB','US','IN','CA','AU','DE','FR','ES','IT','NL','SE','NO','DK','CH','SG','AE','OTHER'].map(function(c){var names={'':'Select...','GB':'United Kingdom','US':'United States','IN':'India','CA':'Canada','AU':'Australia','DE':'Germany','FR':'France','ES':'Spain','IT':'Italy','NL':'Netherlands','SE':'Sweden','NO':'Norway','DK':'Denmark','CH':'Switzerland','SG':'Singapore','AE':'UAE','OTHER':'Other'};return '<option value="'+c+'"'+(user.country===c?' selected':'')+'>'+names[c]+'</option>';}).join('')+
+          '</select>'+
+        '</div>'+
         '<div style="grid-column:1/-1"><button class="btn-primary" style="max-width:180px" onclick="saveProfile()">Save Profile</button><span id="prof-msg" style="font-size:12px;margin-left:12px;display:none"></span></div>'+
       '</div>'+
       '<details style="margin-top:8px"><summary style="font-size:12px;color:var(--text2);cursor:pointer">Change Password</summary>'+
@@ -601,7 +640,7 @@ function testAndSaveAccount(){
       return post('/api/accounts',{label:label,broker:broker,api_key:key}).then(function(r2){
         if(r2.success){closeModal();api('/api/auth/me').then(function(u){currentUser=u;renderSettings();refreshAll();});}
       });
-    } else {msgEl.style.color='var(--red)';msgEl.textContent=r.message;}
+    } else {msgEl.style.color='var(--red)';msgEl.innerHTML=esc(r.message||'Failed');}
   }).catch(function(){msgEl.style.color='var(--red)';msgEl.textContent='Connection error';});
 }
 
@@ -665,7 +704,7 @@ function checkPwStrength(pw){
   else{bars.forEach(function(b){document.getElementById(b).className='pw-bar strong';});if(label)label.textContent='Strong';}
 }
 function saveProfile(){
-  var data={name:document.getElementById('prof-name').value.trim(),email:document.getElementById('prof-email').value.trim(),phone:document.getElementById('prof-phone').value.trim(),address:document.getElementById('prof-address').value.trim()};
+  var data={name:document.getElementById('prof-name').value.trim(),phone:document.getElementById('prof-phone').value.trim(),address:document.getElementById('prof-address').value.trim(),postcode:(document.getElementById('prof-postcode')||{}).value||'',country:(document.getElementById('prof-country')||{}).value||''};
   var msg=document.getElementById('prof-msg');
   post('/api/user/profile',data).then(function(r){
     msg.style.display='inline';
