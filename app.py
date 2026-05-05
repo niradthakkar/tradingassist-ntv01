@@ -16,10 +16,18 @@ import base64
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
 def get_db():
-    """Get PostgreSQL connection"""
-    import psycopg2
-    import psycopg2.extras
-    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    """Get PostgreSQL connection using pg8000 (pure Python)"""
+    import pg8000.native
+    import urllib.parse
+    url = urllib.parse.urlparse(DATABASE_URL)
+    conn = pg8000.native.Connection(
+        user=url.username,
+        password=url.password,
+        host=url.hostname,
+        port=url.port or 5432,
+        database=url.path.lstrip('/'),
+        ssl_context=True
+    )
     return conn
 
 def init_db():
@@ -28,18 +36,14 @@ def init_db():
         return
     try:
         conn = get_db()
-        cur = conn.cursor()
-        cur.execute("""
+        conn.run("""
             CREATE TABLE IF NOT EXISTS users (
                 email TEXT PRIMARY KEY,
-                data JSONB NOT NULL,
+                data TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         """)
-        conn.commit()
-        cur.close()
-        conn.close()
         print("Database initialised successfully")
     except Exception as e:
         print(f"Database init error: {e}")
@@ -49,12 +53,8 @@ def load_users():
     if DATABASE_URL:
         try:
             conn = get_db()
-            cur = conn.cursor()
-            cur.execute("SELECT email, data FROM users")
-            rows = cur.fetchall()
-            cur.close()
-            conn.close()
-            return {row[0]: row[1] for row in rows}
+            rows = conn.run("SELECT email, data FROM users")
+            return {row[0]: json.loads(row[1]) for row in rows}
         except Exception as e:
             print(f"DB load error: {e}")
     # File fallback
@@ -69,18 +69,13 @@ def save_users(users):
     if DATABASE_URL:
         try:
             conn = get_db()
-            cur = conn.cursor()
             for email, data in users.items():
-                import psycopg2.extras
-                cur.execute("""
+                conn.run("""
                     INSERT INTO users (email, data, updated_at)
-                    VALUES (%s, %s, NOW())
+                    VALUES (:email, :data, NOW())
                     ON CONFLICT (email) DO UPDATE
                     SET data = EXCLUDED.data, updated_at = NOW()
-                """, (email, json.dumps(data)))
-            conn.commit()
-            cur.close()
-            conn.close()
+                """, email=email, data=json.dumps(data))
             return
         except Exception as e:
             print(f"DB save error: {e}")
@@ -96,12 +91,8 @@ def get_user(username):
     if DATABASE_URL:
         try:
             conn = get_db()
-            cur = conn.cursor()
-            cur.execute("SELECT data FROM users WHERE email = %s", (username,))
-            row = cur.fetchone()
-            cur.close()
-            conn.close()
-            return row[0] if row else None
+            rows = conn.run("SELECT data FROM users WHERE email = :email", email=username)
+            return json.loads(rows[0][0]) if rows else None
         except Exception as e:
             print(f"DB get_user error: {e}")
     # File fallback
