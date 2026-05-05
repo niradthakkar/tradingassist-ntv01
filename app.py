@@ -113,6 +113,53 @@ init_db()
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
+# ── EMAIL ─────────────────────────────────────────────────────────────
+import smtplib, random, string
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+GMAIL_USER = os.environ.get('GMAIL_USER', '')
+GMAIL_PASS = os.environ.get('GMAIL_PASS', '')
+_reset_tokens = {}
+
+def send_email(to_email, subject, html_body):
+    if not GMAIL_USER or not GMAIL_PASS:
+        print(f"Email not configured - skipping send to {to_email}")
+        return False
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From']    = f"TradingAssist Support <{GMAIL_USER}>"
+        msg['To']      = to_email
+        msg.attach(MIMEText(html_body, 'html'))
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(GMAIL_USER, GMAIL_PASS)
+            server.sendmail(GMAIL_USER, to_email, msg.as_string())
+        print(f"Email sent to {to_email}")
+        return True
+    except Exception as e:
+        print(f"Email error: {e}")
+        return False
+
+def generate_token():
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+
+def get_app_url():
+    return os.environ.get('APP_URL', 'https://tradingassist-ntv01.onrender.com')
+
+def reset_email_html(name, reset_url):
+    return (
+        '<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#111827;color:#dce6f0;border-radius:12px">'
+        '<h2 style="color:#3b82f6;margin-bottom:8px">TradingAssist</h2>'
+        '<p>Hi ' + name + ',</p>'
+        '<p>You requested a password reset. Click below to set a new password:</p>'
+        '<a href="' + reset_url + '" style="display:inline-block;background:#3b82f6;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;margin:16px 0;font-size:14px">Reset My Password</a>'
+        '<p style="color:#7a96b8;font-size:12px;margin-top:16px">This link expires in 1 hour. If you did not request this, you can safely ignore this email.</p>'
+        '<hr style="border:none;border-top:1px solid #1e2d45;margin:20px 0">'
+        '<p style="color:#3d5470;font-size:11px">TradingAssist NT v0.1 &middot; Need help? <a href="mailto:tradingassist.support@gmail.com" style="color:#3b82f6">tradingassist.support@gmail.com</a></p>'
+        '</div>'
+    )
+
 # get_user defined in storage section above
 
 def current_user():
@@ -847,6 +894,78 @@ def test_account():
             our_ip = 'unknown'
         return jsonify({'success':False,'message':f'Connection failed. Please check: (1) API key is correct and complete, (2) Key matches account type (ISA key for ISA, Invest key for Invest), (3) In Trading212 API settings, whitelist this IP: {our_ip}'})
     return jsonify({'success':False,'message':'Broker integration coming soon'})
+
+@app.route('/api/auth/forgot-password', methods=['POST'])
+def forgot_password():
+    data  = request.json or {}
+    email = data.get('email','').strip().lower()
+    if not email:
+        return jsonify({'error':'Email required'}),400
+    user = get_user(email)
+    if user:
+        token   = generate_token()
+        expires = time.time() + 3600
+        _reset_tokens[token] = {'email':email,'expires':expires}
+        reset_url = get_app_url() + '/reset-password?token=' + token
+        html = reset_email_html(user.get('name',''), reset_url)
+        send_email(email, 'Reset your TradingAssist password', html)
+    return jsonify({'success':True,'message':'If an account exists with that email, a reset link has been sent.'})
+
+@app.route('/api/auth/reset-password', methods=['POST'])
+def reset_password():
+    data   = request.json or {}
+    token  = data.get('token','')
+    new_pw = data.get('password','')
+    entry  = _reset_tokens.get(token)
+    if not entry:
+        return jsonify({'error':'Invalid or expired reset link'}),400
+    if time.time() > entry['expires']:
+        del _reset_tokens[token]
+        return jsonify({'error':'Reset link has expired. Please request a new one.'}),400
+    if len(new_pw) < 8:
+        return jsonify({'error':'Password must be at least 8 characters'}),400
+    has_upper=any(c.isupper() for c in new_pw)
+    has_lower=any(c.islower() for c in new_pw)
+    has_digit=any(c.isdigit() for c in new_pw)
+    has_special=any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in new_pw)
+    if sum([has_upper,has_lower,has_digit,has_special])<3:
+        return jsonify({'error':'Password too weak. Use uppercase, lowercase, number and special character.'}),400
+    email = entry['email']
+    users = load_users()
+    if email not in users:
+        return jsonify({'error':'Account not found'}),404
+    users[email]['password'] = hash_password(new_pw)
+    save_users(users)
+    del _reset_tokens[token]
+    return jsonify({'success':True,'message':'Password updated! You can now log in.'})
+
+@app.route('/api/user/change-email', methods=['POST'])
+@require_login
+def change_email():
+    data      = request.json or {}
+    new_email = data.get('new_email','').strip().lower()
+    password  = data.get('password','')
+    if not new_email or not password:
+        return jsonify({'error':'New email and current password required'}),400
+    if '@' not in new_email or '.' not in new_email:
+        return jsonify({'error':'Please enter a valid email address'}),400
+    users    = load_users()
+    username = current_user()
+    user     = users.get(username)
+    if not user or user['password'] != hash_password(password):
+        return jsonify({'error':'Incorrect password'}),401
+    if new_email in users and new_email != username:
+        return jsonify({'error':'An account with this email already exists'}),400
+    users[new_email] = dict(user)
+    users[new_email]['email']    = new_email
+    users[new_email]['username'] = new_email
+    if new_email != username:
+        del users[username]
+    save_users(users)
+    session['username'] = new_email
+    send_email(username, 'TradingAssist - Email changed', '<p>Your email was changed to <strong>' + new_email + '</strong>. If this was not you, contact support immediately.</p>')
+    send_email(new_email, 'TradingAssist - Email confirmed', '<p>Your TradingAssist login email is now <strong>' + new_email + '</strong>.</p>')
+    return jsonify({'success':True,'message':'Email updated successfully.'})
 
 @app.route('/api/user/profile', methods=['POST'])
 @require_login

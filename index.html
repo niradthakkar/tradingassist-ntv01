@@ -157,6 +157,14 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
 .btn-danger-sm{color:var(--red);border-color:rgba(239,68,68,.3)}.btn-danger-sm:hover{background:var(--rbg)}
 .add-acct-btn{width:100%;padding:10px;border:2px dashed var(--border2);border-radius:var(--rs);background:transparent;color:var(--text2);cursor:pointer;font-size:12px;font-family:'Inter',sans-serif;transition:all .15s;margin-top:4px}
 .add-acct-btn:hover{border-color:var(--accent);color:var(--accent)}
+/* ── TERMS MODAL ── */
+.terms-body{max-height:300px;overflow-y:auto;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);padding:14px;font-size:11px;color:var(--text2);line-height:1.8;margin-bottom:14px}
+.terms-body h4{color:var(--text);font-size:12px;margin:12px 0 4px}
+.terms-body p{margin-bottom:8px}
+.checkbox-wrap{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;cursor:pointer}
+.checkbox-wrap input[type=checkbox]{width:16px;height:16px;margin-top:2px;accent-color:var(--accent);flex-shrink:0;cursor:pointer}
+.checkbox-wrap label{font-size:12px;color:var(--text2);cursor:pointer;line-height:1.5}
+.checkbox-wrap label a{color:var(--accent)}
 /* ── PASSWORD STRENGTH ── */
 .pw-strength{margin-top:6px}
 .pw-bars{display:flex;gap:3px;margin-bottom:4px}
@@ -197,6 +205,9 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
       <div class="form-group"><label class="form-label">Email Address</label><input class="form-input" id="login-email" type="email" placeholder="your@email.com" autocomplete="email"></div>
       <div class="form-group"><label class="form-label">Password</label><input class="form-input" id="login-pass" type="password" placeholder="Enter password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
       <button class="btn-primary" onclick="doLogin()" id="login-btn">Sign In</button>
+      <div style="text-align:center;margin-top:12px">
+        <button onclick="showForgotPassword()" style="background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;font-family:Inter,sans-serif">Forgot your password?</button>
+      </div>
     </div>
 
     <!-- REGISTER -->
@@ -246,7 +257,16 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
         </div>
       </div>
       <div class="form-group"><label class="form-label">Confirm Password *</label><input class="form-input" id="reg-pass2" type="password" placeholder="Min 8 characters" onkeydown="if(event.key==='Enter')doRegister()"></div>
+      <div class="checkbox-wrap" style="margin-top:8px">
+        <input type="checkbox" id="reg-terms">
+        <label for="reg-terms">I agree to the <a href="#" onclick="showTermsModal();return false">Terms of Service</a> and <a href="#" onclick="showTermsModal();return false">Privacy Policy</a>. I understand that TradingAssist provides information for personal use only and is not financial advice.</label>
+      </div>
+      <div class="checkbox-wrap">
+        <input type="checkbox" id="reg-disclaimer">
+        <label for="reg-disclaimer">I acknowledge that investment decisions are my own responsibility and past performance does not guarantee future results.</label>
+      </div>
       <button class="btn-primary" onclick="doRegister()" id="reg-btn">Create Account</button>
+      <p style="font-size:10px;color:var(--text3);margin-top:10px;text-align:center">By creating an account you agree to our terms. Need help? <a href="mailto:tradingassist.support@gmail.com" style="color:var(--accent)">tradingassist.support@gmail.com</a></p>
     </div>
   </div>
 </div>
@@ -280,38 +300,8 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
 <div id="account-sections"></div>
 <div id="sec-overview" class="sec active"><div id="ov-c"><div class="ldg"><div class="sp"></div><p>Loading portfolio...</p></div></div></div>
 <div id="sec-watchlist" class="sec">
-  <div class="wladd"><input class="wlinput" id="wl-inp" placeholder="Add ticker e.g. NVDA" onkeydown="if(event.key==='Enter')addWL()"/><button class="addbtn" onclick="addWL()">+ Add</button></div>
-  <div id="wl-c"><div class="ldg"><div class="sp"></div><p>Loading...</p></div></div>
-</div>
-<div id="sec-suggestions" class="sec">
-  <div class="tftabs">
-    <button class="tftab active" onclick="showSug('1day',this)">1 Day</button>
-    <button class="tftab" onclick="showSug('1week',this)">1 Week</button>
-    <button class="tftab" onclick="showSug('1month',this)">1 Month</button>
-    <button class="tftab" onclick="showSug('1year',this)">1 Year</button>
-  </div>
-  <div id="sug-c"><div class="ldg"><div class="sp"></div><p>Loading...</p></div></div>
-</div>
-<div id="sec-news" class="sec"><div id="news-c"><div class="ldg"><div class="sp"></div><p>Loading news...</p></div></div></div>
-<div id="sec-earnings" class="sec"><div id="earn-c"><div class="ldg"><div class="sp"></div><p>Loading earnings...</p></div></div></div>
-<div id="sec-settings" class="sec">
-  <div id="settings-c"><div class="ldg"><div class="sp"></div><p>Loading settings...</p></div></div>
-</div>
-</div>
-
-<!-- MODALS -->
-<div class="overlay" id="modal">
-  <div class="modal"><div class="mhdr"><h3 id="m-title">News</h3><button class="mcls" onclick="closeModal()">X</button></div><div class="mbody" id="m-body"></div></div>
-</div>
-<div class="detail-overlay" id="detail-modal">
-  <div class="detail-modal">
-    <div class="detail-hdr"><div><div class="detail-sym" id="detail-sym">-</div><div class="detail-name" id="detail-name">Loading...</div></div><button class="mcls" onclick="closeDetail()">X</button></div>
-    <div class="detail-body" id="detail-body"><div class="ldg"><div class="sp"></div><p>Loading...</p></div></div>
-  </div>
-</div>
-
+  <div c
 <script>
-// ── STATE ─────────────────────────────────────────────────────────────
 var S={portfolio:{accounts:[],summaries:[]},suggestions:{},earnings:{},
   extraWL:JSON.parse(localStorage.getItem('extraWL')||'[]'),
   removedWL:JSON.parse(localStorage.getItem('removedWL')||'[]'),
@@ -375,11 +365,105 @@ function doRegister(){
   if(p.length<8){showAuthErr('Password must be at least 8 characters');return;}
   var hasUpper=/[A-Z]/.test(p),hasLower=/[a-z]/.test(p),hasDigit=/[0-9]/.test(p),hasSpecial=/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(p);
   if([hasUpper,hasLower,hasDigit,hasSpecial].filter(Boolean).length<3){showAuthErr('Password too weak. Use uppercase, lowercase, number and special character.');return;}
+  if(!document.getElementById('reg-terms').checked){showAuthErr('Please accept the Terms of Service to continue');return;}
+  if(!document.getElementById('reg-disclaimer').checked){showAuthErr('Please acknowledge the investment disclaimer to continue');return;}
   document.getElementById('reg-btn').disabled=true;
   post('/api/auth/register',{name:name,email:email,phone:phone,address:address,postcode:postcode,country:country,password:p}).then(function(r){
     if(r.error){showAuthErr(r.error);document.getElementById('reg-btn').disabled=false;}
     else{showApp(r);refreshAll();}
   }).catch(function(){showAuthErr('Connection error. Try again.');document.getElementById('reg-btn').disabled=false;});
+}
+
+function showTermsModal(){
+  document.getElementById('m-title').textContent='Terms of Service & Privacy Policy';
+  document.getElementById('m-body').innerHTML=
+    '<div class="terms-body">'+
+      '<h4>1. About TradingAssist</h4>'+
+      '<p>TradingAssist NT v0.1 is a personal portfolio tracking dashboard. It aggregates data from connected brokerage accounts and provides market information, technical indicators, and AI-generated suggestions for informational purposes only.</p>'+
+      '<h4>2. Not Financial Advice</h4>'+
+      '<p>Nothing on TradingAssist constitutes financial, investment, legal, or tax advice. All content is for informational and educational purposes only. You should always consult a qualified financial advisor before making investment decisions.</p>'+
+      '<h4>3. Investment Risk</h4>'+
+      '<p>Investing involves risk, including the possible loss of principal. Past performance does not guarantee future results. AI suggestions and technical indicators are tools to assist research, not recommendations to buy or sell.</p>'+
+      '<h4>4. Data & Privacy</h4>'+
+      '<p>Your personal information (name, email, phone, address) and brokerage API keys are stored securely on our servers. We do not sell, share, or disclose your data to third parties. API keys are used solely to read your portfolio data — TradingAssist cannot place trades on your behalf.</p>'+
+      '<h4>5. API Keys & Security</h4>'+
+      '<p>You are responsible for keeping your brokerage API keys secure. Use read-only API keys where possible. TradingAssist stores keys encrypted and only uses them to fetch portfolio data.</p>'+
+      '<h4>6. No Warranty</h4>'+
+      '<p>TradingAssist is provided "as is" without warranty of any kind. We do not guarantee the accuracy, completeness, or timeliness of any data displayed. Market data is sourced from third-party providers.</p>'+
+      '<h4>7. Limitation of Liability</h4>'+
+      '<p>TradingAssist and its developers shall not be liable for any investment losses, data inaccuracies, or damages arising from use of this service.</p>'+
+      '<h4>8. Contact</h4>'+
+      '<p>For support or queries: <a href="mailto:tradingassist.support@gmail.com" style="color:var(--accent)">tradingassist.support@gmail.com</a></p>'+
+    '</div>'+
+    '<button class="btn-primary" onclick="closeModal()">I Understand</button>';
+  document.getElementById('modal').classList.add('open');
+}
+function showForgotPassword(){
+  document.getElementById('m-title').textContent='Reset Password';
+  document.getElementById('m-body').innerHTML=
+    '<p style="color:var(--text2);font-size:12px;margin-bottom:16px">Enter your email address and we will send you a link to reset your password.</p>'+
+    '<div class="form-group"><label class="form-label">Email Address</label><input class="form-input" id="fp-email" type="email" placeholder="your@email.com"></div>'+
+    '<button class="btn-primary" onclick="doForgotPassword()">Send Reset Link</button>'+
+    '<div id="fp-msg" style="margin-top:10px;font-size:12px;display:none"></div>';
+  document.getElementById('modal').classList.add('open');
+}
+
+function doForgotPassword(){
+  var email=document.getElementById('fp-email').value.trim();
+  var msg=document.getElementById('fp-msg');
+  if(!email){msg.style.display='block';msg.style.color='var(--red)';msg.textContent='Please enter your email';return;}
+  msg.style.display='block';msg.style.color='var(--text2)';msg.textContent='Sending...';
+  post('/api/auth/forgot-password',{email:email}).then(function(r){
+    msg.style.color='var(--green)';msg.textContent=r.message||'Reset link sent!';
+  }).catch(function(){msg.style.color='var(--red)';msg.textContent='Error sending email. Please try again.';});
+}
+
+function showResetPassword(token){
+  document.getElementById('auth-screen').style.display='flex';
+  document.getElementById('main-app').classList.remove('visible');
+  document.getElementById('tab-login').style.display='none';
+  document.getElementById('tab-register').style.display='none';
+  document.querySelector('.auth-tabs').style.display='none';
+  document.getElementById('auth-err').classList.remove('show');
+  var box=document.querySelector('.auth-box');
+  box.innerHTML=box.innerHTML+
+    '<div id="reset-form">'+
+      '<h3 style="margin-bottom:16px;font-size:14px;font-weight:600">Set New Password</h3>'+
+      '<div class="form-group"><label class="form-label">New Password *</label>'+
+        '<input class="form-input" id="rp-pass" type="password" placeholder="Min 8 characters" oninput="checkPwStrength(this.value)">'+
+        '<div class="pw-strength" id="pw-strength" style="display:none">'+
+          '<div class="pw-bars"><div class="pw-bar" id="pw-b1"></div><div class="pw-bar" id="pw-b2"></div><div class="pw-bar" id="pw-b3"></div><div class="pw-bar" id="pw-b4"></div></div>'+
+          '<div class="pw-label" id="pw-label"></div>'+
+          '<div class="pw-reqs">'+
+            '<div class="pw-req" id="req-len">&#10007; At least 8 characters</div>'+
+            '<div class="pw-req" id="req-upper">&#10007; Uppercase letter</div>'+
+            '<div class="pw-req" id="req-lower">&#10007; Lowercase letter</div>'+
+            '<div class="pw-req" id="req-digit">&#10007; Number</div>'+
+            '<div class="pw-req" id="req-special">&#10007; Special character</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="form-group"><label class="form-label">Confirm Password *</label>'+
+        '<input class="form-input" id="rp-pass2" type="password" placeholder="Repeat password"></div>'+
+      '<button class="btn-primary" id="rp-btn" data-token="'+token+'" onclick="doResetPassword(this.dataset.token)">Set New Password</button>'+
+      '<div id="rp-msg" style="margin-top:10px;font-size:12px;display:none"></div>'+
+    '</div>';
+}
+
+function doResetPassword(token){
+  var p=document.getElementById('rp-pass').value;
+  var p2=document.getElementById('rp-pass2').value;
+  var msg=document.getElementById('rp-msg');
+  if(p!==p2){msg.style.display='block';msg.style.color='var(--red)';msg.textContent='Passwords do not match';return;}
+  msg.style.display='block';msg.style.color='var(--text2)';msg.textContent='Updating...';
+  post('/api/auth/reset-password',{token:token,password:p}).then(function(r){
+    if(r.success){
+      msg.style.color='var(--green)';msg.textContent=r.message+' Redirecting to login...';
+      setTimeout(function(){window.location.href='/';},2000);
+    } else {
+      msg.style.color='var(--red)';msg.textContent=r.error||'Failed';
+    }
+  }).catch(function(){msg.style.color='var(--red)';msg.textContent='Error. Please try again.';});
 }
 
 function doLogout(){post('/api/auth/logout').then(function(){currentUser=null;showAuth();S.portfolio={accounts:[],summaries:[]};});}
@@ -577,6 +661,14 @@ function renderSettings(){
         '</div>'+
         '<div style="grid-column:1/-1"><button class="btn-primary" style="max-width:180px" onclick="saveProfile()">Save Profile</button><span id="prof-msg" style="font-size:12px;margin-left:12px;display:none"></span></div>'+
       '</div>'+
+      '<details style="margin-top:8px"><summary style="font-size:12px;color:var(--text2);cursor:pointer">Change Email Address</summary>'+
+        '<div style="margin-top:12px;display:grid;gap:10px">'+
+          '<div><div class="form-label">New Email Address</div><input class="form-input" id="em-new" type="email" placeholder="new@email.com"></div>'+
+          '<div><div class="form-label">Current Password (to confirm)</div><input class="form-input" id="em-pass" type="password" placeholder="Your current password"></div>'+
+          '<div><button class="btn-primary" style="max-width:200px" onclick="changeEmail()">Update Email</button></div>'+
+          '<div id="em-msg" style="font-size:12px;display:none"></div>'+
+        '</div>'+
+      '</details>'+
       '<details style="margin-top:8px"><summary style="font-size:12px;color:var(--text2);cursor:pointer">Change Password</summary>'+
         '<div style="margin-top:12px;display:grid;gap:10px">'+
           '<div><div class="form-label">Current Password</div><input class="form-input" id="pw-old" type="password" placeholder="Current password"></div>'+
@@ -590,6 +682,14 @@ function renderSettings(){
       '<div class="settings-title">&#128279; Broker Connections <span style="font-size:11px;font-weight:400;color:var(--text3)">'+accounts.length+' connected</span></div>'+
       accounts.map(function(a){return '<div class="acct-card"><div class="acct-info"><div class="acct-label">'+esc(a.label)+'</div><div class="acct-broker">'+esc(BROKER_NAMES[a.broker]||a.broker)+'</div><div class="acct-key">Key: '+esc(a.api_key.substring(0,8))+'••••••••</div></div><div class="acct-actions"><button class="btn-sm" onclick="editAccount(\''+a.id+'\')">Edit</button><button class="btn-sm btn-danger-sm" onclick="deleteAccount(\''+a.id+'\')">Remove</button></div></div>';}).join('')+
       '<button class="add-acct-btn" onclick="showAddAccount()">+ Add Broker Account</button>'+
+    '</div>'+
+    '<div class="settings-section">'+
+      '<div class="settings-title">&#128222; Customer Support</div>'+
+      '<p style="font-size:12px;color:var(--text2);margin-bottom:12px">For help, questions or feedback about TradingAssist, contact our support team:</p>'+
+      '<a href="mailto:tradingassist.support@gmail.com" style="display:inline-flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border2);color:var(--accent2);padding:10px 16px;border-radius:var(--rs);font-size:13px;text-decoration:none;font-weight:500">'+
+        '<span style="font-size:16px">&#9993;</span> tradingassist.support@gmail.com'+
+      '</a>'+
+      '<div style="margin-top:10px;font-size:11px;color:var(--text3)">We typically respond within 24 hours. Please include your username in the email.</div>'+
     '</div>'+
     '<div class="settings-section">'+
       '<div class="settings-title">&#128275; Session</div>'+
@@ -713,6 +813,19 @@ function saveProfile(){
     setTimeout(function(){msg.style.display='none';},3000);
   });
 }
+function changeEmail(){
+  var newEmail=document.getElementById('em-new').value.trim();
+  var pw=document.getElementById('em-pass').value;
+  var msg=document.getElementById('em-msg');
+  if(!newEmail||!pw){msg.style.display='block';msg.style.color='var(--red)';msg.textContent='Please fill in all fields';return;}
+  msg.style.display='block';msg.style.color='var(--text2)';msg.textContent='Updating...';
+  post('/api/user/change-email',{new_email:newEmail,password:pw}).then(function(r){
+    if(r.success){
+      msg.style.color='var(--green)';msg.textContent=r.message;
+      api('/api/auth/me').then(function(u){currentUser=u;renderSettings();});
+    } else {msg.style.color='var(--red)';msg.textContent=r.error||'Failed';}
+  }).catch(function(){msg.style.color='var(--red)';msg.textContent='Error. Please try again.';});
+}
 function changePassword(){
   var oldPw=document.getElementById('pw-old').value;
   var newPw=document.getElementById('pw-new').value;
@@ -821,13 +934,14 @@ function refreshAll(){
   fQ=[];Object.keys(NF).forEach(function(k){NC[k]=NF[k];});
   Promise.all([
     api('/api/portfolio').catch(function(){return{accounts:[],summaries:[]};}),
-    api('/api/suggestions').catch(function(){return{};})
+    api('/api/suggestions').catch(function(){return{};}),
+    api('/api/brokers').catch(function(){return{};})
   ]).then(function(res){
     S.portfolio=res[0]||{accounts:[],summaries:[]};
     S.suggestions=res[1]||{};
+    BROKERS=res[2]||{};
     allHoldings().forEach(function(h){owned[h.symbol]=1;});
     renderAll();setLoad(false);
-    // Queue background fetches
     var allSyms=[],indSyms=[],seen={};
     allHoldings().forEach(function(h){if(h.symbol&&!seen[h.symbol]){seen[h.symbol]=1;allSyms.push(h.symbol);indSyms.push(h.indSymbol||h.symbol);}});
     queueFetch(allSyms,indSyms);
@@ -847,6 +961,40 @@ setInterval(function(){
 },120000);
 
 // ── INIT ──────────────────────────────────────────────────────────────
+// Handle password reset link
+var urlParams = new URLSearchParams(window.location.search);
+var resetToken = urlParams.get('token');
+if(resetToken && window.location.pathname === '/reset-password'){
+  showResetPassword(resetToken);
+}
+
+api('/api/auth/me').then(function(user){
+  if(user.authenticated){showApp(user);currentUser=user;refreshAll();}
+  else{showAuth();}
+}).catch(function(){showAuth();});
+
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function(){});
+
+
+// Auto-refresh every 2 minutes
+setInterval(function(){
+  api('/api/portfolio').catch(function(){return null;}).then(function(res){
+    if(!res) return;
+    S.portfolio=res;
+    renderAll();
+    var el=document.getElementById('last-updated');
+    if(el) el.textContent='Updated '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  });
+},120000);
+
+// ── INIT ──────────────────────────────────────────────────────────────
+// Handle password reset link
+var urlParams = new URLSearchParams(window.location.search);
+var resetToken = urlParams.get('token');
+if(resetToken && window.location.pathname === '/reset-password'){
+  showResetPassword(resetToken);
+}
+
 api('/api/auth/me').then(function(user){
   if(user.authenticated){showApp(user);currentUser=user;refreshAll();}
   else{showAuth();}
