@@ -354,9 +354,40 @@ function del(url){return api(url,{method:'DELETE'});}
 function put(url,data){return api(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}
 
 // ── AUTH ──────────────────────────────────────────────────────────────
-function showAuth(){document.getElementById('auth-screen').style.display='flex';document.getElementById('main-app').classList.remove('visible');}
+function showAuth(){
+  document.getElementById('auth-screen').style.display='flex';
+  document.getElementById('main-app').classList.remove('visible');
+  // Always show login tab
+  document.getElementById('tab-login').style.display='block';
+  document.getElementById('tab-register').style.display='none';
+  document.querySelectorAll('.auth-tab').forEach(function(t,i){
+    t.classList.toggle('active', i===0);
+  });
+  clearAuthMsg();
+}
 function showApp(user){currentUser=user;document.getElementById('auth-screen').style.display='none';document.getElementById('main-app').classList.add('visible');var av=document.getElementById('user-avatar');var nm=document.getElementById('user-name-hdr');if(av) av.textContent=(user.name||user.username||'U')[0].toUpperCase();if(nm) nm.textContent=user.name||user.username;}
-function switchAuthTab(tab,btn){document.querySelectorAll('.auth-tab').forEach(function(t){t.classList.remove('active');});btn.classList.add('active');document.getElementById('tab-login').style.display=tab==='login'?'block':'none';document.getElementById('tab-register').style.display=tab==='register'?'block':'none';clearAuthMsg();}
+function switchAuthTab(tab,btn){
+  document.querySelectorAll('.auth-tab').forEach(function(t){t.classList.remove('active');});
+  btn.classList.add('active');
+  document.getElementById('tab-login').style.display=tab==='login'?'block':'none';
+  document.getElementById('tab-register').style.display=tab==='register'?'block':'none';
+  clearAuthMsg();
+  // Clear register form when switching to it
+  if(tab==='register'){
+    ['reg-name','reg-email','reg-phone','reg-address','reg-postcode','reg-pass','reg-pass2'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(el) el.value='';
+    });
+    var country=document.getElementById('reg-country');
+    if(country) country.value='';
+    var terms=document.getElementById('reg-terms');
+    if(terms) terms.checked=false;
+    var disc=document.getElementById('reg-disclaimer');
+    if(disc) disc.checked=false;
+    var pwStr=document.getElementById('pw-strength');
+    if(pwStr) pwStr.style.display='none';
+  }
+}
 function showAuthErr(msg){var el=document.getElementById('auth-err');el.textContent=msg;el.classList.add('show');document.getElementById('auth-ok').classList.remove('show');}
 function showAuthOk(msg){var el=document.getElementById('auth-ok');el.textContent=msg;el.classList.add('show');document.getElementById('auth-err').classList.remove('show');}
 function clearAuthMsg(){document.getElementById('auth-err').classList.remove('show');document.getElementById('auth-ok').classList.remove('show');}
@@ -493,7 +524,23 @@ function doResetPassword(token){
   }).catch(function(){msg.style.color='var(--red)';msg.textContent='Error. Please try again.';});
 }
 
-function doLogout(){post('/api/auth/logout').then(function(){currentUser=null;showAuth();S.portfolio={accounts:[],summaries:[]};});}
+function doLogout(){
+  post('/api/auth/logout').then(function(){
+    currentUser=null;
+    S.portfolio={accounts:[],summaries:[]};
+    S.earnings={};S.suggestions={};
+    newsLoaded=false;earningsLoaded=false;
+    showAuth();
+    // Always show login tab on logout
+    var loginTab=document.querySelector('.auth-tab');
+    if(loginTab) switchAuthTab('login',loginTab);
+    // Clear login form too
+    var em=document.getElementById('login-email');
+    var pw=document.getElementById('login-pass');
+    if(em) em.value='';
+    if(pw) pw.value='';
+  });
+}
 
 // ── SIGNAL / INDICATORS ───────────────────────────────────────────────
 function signalPill(sig){if(!sig||sig==='Loading...') return '<span class="pill p-ld">loading</span>';var m={'Strong Bullish':['p-sb','++ Strong Bullish'],'Bullish':['p-b','+ Bullish'],'Neutral':['p-n','Neutral'],'Bearish':['p-br','- Bearish'],'Strong Bearish':['p-sbr','-- Strong Bearish']};var c=m[sig]||['p-n','Neutral'];return '<span class="pill '+c[0]+'">'+c[1]+'</span>';}
