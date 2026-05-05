@@ -583,13 +583,17 @@ function renderEarnings(tab){tab=tab||'upcoming';var data=S.earnings||{};var all
 var BROKERS = {};  // loaded from /api/brokers
 
 function loadBrokers(){
-  return api('/api/brokers').then(function(b){ BROKERS=b||{}; }).catch(function(){});
+  return api('/api/brokers').then(function(r){
+    BROKERS=(r&&r.brokers)||r||{};
+    window.SERVER_IP=(r&&r.server_ip)||'Check Test & Connect error message';
+  }).catch(function(){});
 }
 
 function buildBrokerDropdown(){
   var groups = {};
-  Object.keys(BROKERS).forEach(function(id){
-    var b=BROKERS[id];
+  var brokerList=BROKERS.brokers||BROKERS;
+  Object.keys(brokerList).forEach(function(id){
+    var b=brokerList[id];
     if(!groups[b.group]) groups[b.group]=[];
     groups[b.group].push({id:id,...b});
   });
@@ -611,7 +615,7 @@ function buildBrokerDropdown(){
 
 function onBrokerChange(){
   var sel=document.getElementById('new-broker');
-  var broker=BROKERS[sel.value]||{};
+  var broker=(BROKERS.brokers||BROKERS)[sel.value]||{};
   // Update key label and placeholder
   var keyLabel=document.getElementById('key-label');
   var keyInput=document.getElementById('new-key');
@@ -649,7 +653,7 @@ function updateLabelCount(){
 }
 function showBrokerHelp(){
   var sel=document.getElementById('new-broker');
-  var broker=BROKERS[sel.value]||{};
+  var broker=(BROKERS.brokers||BROKERS)[sel.value]||{};
   var steps=broker.help_steps||[];
   document.getElementById('m-title').textContent='How to get your '+broker.name+' API key';
   document.getElementById('m-body').innerHTML=
@@ -657,10 +661,26 @@ function showBrokerHelp(){
     '<div style="font-size:11px;color:var(--text3);margin-bottom:14px">'+esc(broker.region||'')+(broker.description?' &middot; '+esc(broker.description):'')+'</div>'+
     (steps.length?
       '<ol style="padding-left:18px;color:var(--text2);font-size:12px;line-height:2.4">'+
-        steps.map(function(s,i){return '<li style="margin-bottom:4px">'+esc(s)+'</li>';}).join('')+
+        steps.map(function(s,i){
+          // Highlight the IP whitelist step
+          var isIpStep = s.indexOf('IP Whitelist') >= 0 || s.indexOf('server IP') >= 0;
+          return '<li style="margin-bottom:6px'+(isIpStep?';color:var(--amber)':'')+'">'+(isIpStep?'&#9888; ':'')+esc(s)+'</li>';
+        }).join('')+
       '</ol>'
     :'<div style="background:var(--rbg);border:1px solid rgba(239,68,68,.2);border-radius:var(--rs);padding:10px 12px;font-size:12px;color:var(--red2)">'+
       'This broker does not have a public API available yet. We cannot connect automatically.</div>')+
+    // Show server IP prominently for T212
+    (broker.help_note?
+      '<div style="background:var(--abg);border:1px solid rgba(245,158,11,.25);border-radius:var(--rs);padding:10px 12px;margin-top:12px">'+
+        '<div style="font-size:11px;font-weight:600;color:var(--amber);margin-bottom:6px">&#9888; Important</div>'+
+        '<div style="font-size:11px;color:var(--text2);margin-bottom:8px">'+esc(broker.help_note)+'</div>'+
+        '<div style="font-size:11px;color:var(--text2)">Your server IP to whitelist:</div>'+
+        '<div style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:600;color:var(--accent2);background:var(--bg3);padding:8px 12px;border-radius:var(--rs);margin-top:6px;letter-spacing:1px">'+
+          (window.SERVER_IP||'Loading...')+
+        '</div>'+
+        '<div style="font-size:10px;color:var(--text3);margin-top:4px">Copy this IP and add it to Trading212 API Settings → IP Whitelist</div>'+
+      '</div>'
+    :'')+
     '<div class="notice" style="margin-top:14px">&#128274; Your API key is stored securely on the server. It is only used to read your portfolio data. TradingAssist cannot place trades on your behalf.</div>';
   document.getElementById('modal').classList.add('open');
 }
@@ -716,7 +736,7 @@ function renderSettings(){
       '<a href="mailto:tradingassist.support@gmail.com" style="display:inline-flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border2);color:var(--accent2);padding:10px 16px;border-radius:var(--rs);font-size:13px;text-decoration:none;font-weight:500">'+
         '<span style="font-size:16px">&#9993;</span> tradingassist.support@gmail.com'+
       '</a>'+
-      '<div style="margin-top:10px;font-size:11px;color:var(--text3)">We typically respond within 24 hours. Please include your username in the email.</div>'+
+      '<div style="margin-top:10px;font-size:11px;color:var(--text3)">We typically respond within 72 hours. Please include your username in the email.</div>'+
     '</div>'+
     '<div class="settings-section">'+
       '<div class="settings-title">&#128275; Session</div>'+
@@ -740,10 +760,15 @@ function showAddAccount(){
     '<div id="broker-status-msg" style="padding:9px 12px;border-radius:var(--rs);font-size:12px;margin-top:6px;display:none"></div>'+
     '<div class="form-group" id="key-section" style="display:none">'+
       '<div class="form-label" style="display:flex;align-items:center;gap:6px">'+
-        '<span id="key-label">API Key *</span>'+
+        '<span id="key-label">API Key ID *</span>'+
         '<button class="help-btn" onclick="showBrokerHelp()" title="How to get your API key">?</button>'+
       '</div>'+
-      '<input class="form-input" id="new-key" placeholder="Paste your API key here">'+
+      '<input class="form-input" id="new-key" placeholder="Paste your API Key ID here">'+
+      '<div id="secret-section" style="margin-top:10px">'+
+        '<div class="form-label">Secret Key *</div>'+
+        '<input class="form-input" id="new-secret" placeholder="Paste your Secret Key here">'+
+        '<div style="font-size:10px;color:var(--text3);margin-top:4px">Both Key ID and Secret Key are shown when you generate the API key in Trading212.</div>'+
+      '</div>'+
     '</div>'+
     '<div style="display:flex;gap:8px;margin-top:12px">'+
       '<button class="btn-primary" style="flex:1" onclick="testAndSaveAccount()">Test & Connect</button>'+
@@ -755,11 +780,17 @@ function showAddAccount(){
 function testAndSaveAccount(){
   var label=document.getElementById('new-label').value.trim();
   var broker=document.getElementById('new-broker').value;
-  var key=document.getElementById('new-key').value.trim();
+  var keyId=document.getElementById('new-key').value.trim();
+  var secret=(document.getElementById('new-secret')||{}).value||'';
+  secret=secret.trim();
+  // Combine KeyID:SecretKey for Trading212
+  var key = (secret && 'trading212' in broker) ? keyId+':'+secret : keyId;
+  var key = secret ? keyId+':'+secret : keyId;
   var msgEl=document.getElementById('acct-test-msg');
   if(!label){msgEl.style.display='block';msgEl.style.color='var(--red)';msgEl.textContent='Please enter a tab name';return;}
   if(label.length>12){msgEl.style.display='block';msgEl.style.color='var(--red)';msgEl.textContent='Tab name must be 12 characters or less';return;}
-  if(!key){msgEl.style.display='block';msgEl.style.color='var(--red)';msgEl.textContent='Please paste your API key';return;}
+  if(!keyId){msgEl.style.display='block';msgEl.style.color='var(--red)';msgEl.textContent='Please paste your API Key ID';return;}
+  if(!secret&&document.getElementById('secret-section')&&document.getElementById('secret-section').style.display!=='none'){msgEl.style.display='block';msgEl.style.color='var(--red)';msgEl.textContent='Please paste your Secret Key';return;}
   msgEl.style.display='block';msgEl.style.color='var(--text2)';msgEl.textContent='Testing connection...';
   post('/api/accounts/test',{api_key:key,broker:broker}).then(function(r){
     if(r.success){
@@ -767,7 +798,11 @@ function testAndSaveAccount(){
       return post('/api/accounts',{label:label,broker:broker,api_key:key}).then(function(r2){
         if(r2.success){closeModal();api('/api/auth/me').then(function(u){currentUser=u;renderSettings();refreshAll();});}
       });
-    } else {msgEl.style.color='var(--red)';msgEl.innerHTML=esc(r.message||'Failed');}
+    } else {msgEl.style.color='var(--red)';
+        var msg=r.message||'Failed';
+        // Highlight the IP address in the error message
+        msg=msg.replace(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/g,'<strong style="font-family:JetBrains Mono,monospace;color:var(--amber);font-size:13px">$1</strong>');
+        msgEl.innerHTML=msg;}
   }).catch(function(){msgEl.style.color='var(--red)';msgEl.textContent='Connection error';});
 }
 

@@ -266,12 +266,14 @@ BROKER_REGISTRY = {
         'help_steps':  [
             'Log in to trading212.com',
             'Click your profile icon (top right)',
-            'Go to Settings',
-            'Click API (Beta) in left menu',
+            'Go to Settings → API (Beta) in the left menu',
             'Click Generate API key',
             'Select your ISA account',
-            'Copy the key and paste it here',
+            'Under IP Whitelist, add your app server IP (shown below)',
+            'Copy the API Key ID and Secret Key',
+            'Paste both into the fields in TradingAssist',
         ],
+        'help_note': 'You must whitelist the server IP address shown in the Test & Connect error message. Each account (ISA, Invest) has a separate API key.',
     },
     'trading212_invest': {
         'name':        'Trading212 Invest',
@@ -288,12 +290,14 @@ BROKER_REGISTRY = {
         'help_steps':  [
             'Log in to trading212.com',
             'Click your profile icon (top right)',
-            'Go to Settings',
-            'Click API (Beta) in left menu',
+            'Go to Settings → API (Beta) in the left menu',
             'Click Generate API key',
             'Select your Invest account',
-            'Copy the key and paste it here',
+            'Under IP Whitelist, add your app server IP (shown below)',
+            'Copy the API Key ID and Secret Key',
+            'Paste both into the fields in TradingAssist',
         ],
+        'help_note': 'You must whitelist the server IP address shown in the Test & Connect error message. Each account (ISA, Invest) has a separate API key.',
     },
     'trading212_us': {
         'name':        'Trading212 (US)',
@@ -310,10 +314,13 @@ BROKER_REGISTRY = {
         'help_steps':  [
             'Log in to trading212.com',
             'Click your profile icon (top right)',
-            'Go to Settings',
-            'Click API (Beta)',
-            'Generate and copy your API key',
+            'Go to Settings → API (Beta)',
+            'Click Generate API key',
+            'Under IP Whitelist, add your app server IP (shown below)',
+            'Copy the API Key ID and Secret Key',
+            'Paste both into the fields in TradingAssist',
         ],
+        'help_note': 'US accounts have a single account (no ISA/Invest split). You must whitelist the server IP shown in the Test & Connect error message.',
     },
     'ibkr': {
         'name':        'Interactive Brokers',
@@ -481,10 +488,21 @@ def cache_valid(entry, ttl):
 # ── API HELPERS ───────────────────────────────────────────────────────
 def t212_get(endpoint, api_key):
     try:
-        # Trading212 API accepts the key directly in Authorization header
+        import base64
+        key = api_key.strip()
+        # Trading212 uses Basic auth: base64(KeyID:SecretKey)
+        # api_key stored as "KeyID:SecretKey" - encode the whole thing
+        if ':' not in key:
+            # Legacy: just key with empty secret
+            credentials = f"{key}:"
+        else:
+            # Already in KeyID:SecretKey format
+            credentials = key
+        encoded = base64.b64encode(credentials.encode()).decode()
+        auth_header = f"Basic {encoded}"
         r = requests.get(
             f"https://live.trading212.com/api/v0/{endpoint}",
-            headers={"Authorization": api_key.strip()}, timeout=15)
+            headers={"Authorization": auth_header}, timeout=15)
         if r.status_code == 200: return r.json()
         print(f"T212 {endpoint} returned {r.status_code}: {r.text[:200]}")
     except Exception as e: print(f"T212 error: {e}")
@@ -788,7 +806,7 @@ def register():
     }
     save_users(users)
     session['username']=email
-    return jsonify({'success':True,'username':email,'name':name,'email':email,'role':users[email]['role']})
+    return jsonify({'success':True,'username':email,'name':name,'email':email,'phone':phone,'address':address,'postcode':postcode,'country':country,'role':users[email]['role'],'accounts':[]})
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
@@ -801,7 +819,7 @@ def login():
     if not user or user['password']!=hash_password(password):
         return jsonify({'error':'Invalid email or password'}),401
     session['username']=email
-    return jsonify({'success':True,'username':email,'name':user.get('name',email),'email':email,'role':user.get('role','user')})
+    return jsonify({'success':True,'username':email,'name':user.get('name',email),'email':email,'phone':user.get('phone',''),'address':user.get('address',''),'postcode':user.get('postcode',''),'country':user.get('country',''),'role':user.get('role','user'),'accounts':user.get('accounts',[])})
 
 @app.route('/api/auth/logout', methods=['POST'])
 def logout():
@@ -863,8 +881,13 @@ def delete_account(acct_id):
 
 @app.route('/api/brokers')
 def api_brokers():
-    """Return broker registry for frontend"""
-    return jsonify(BROKER_REGISTRY)
+    """Return broker registry for frontend, including server IP"""
+    try:
+        ip_resp = requests.get('https://api.ipify.org', timeout=5)
+        server_ip = ip_resp.text.strip()
+    except:
+        server_ip = 'Unable to detect - check Test & Connect error message'
+    return jsonify({'brokers': BROKER_REGISTRY, 'server_ip': server_ip})
 
 @app.route('/api/accounts/test', methods=['POST'])
 @require_login
