@@ -831,7 +831,6 @@ function testAndSaveAccount(){
   var secret=(document.getElementById('new-secret')||{}).value||'';
   secret=secret.trim();
   // Combine KeyID:SecretKey for Trading212
-  var key = (secret && 'trading212' in broker) ? keyId+':'+secret : keyId;
   var key = secret ? keyId+':'+secret : keyId;
   var msgEl=document.getElementById('acct-test-msg');
   if(!label){msgEl.style.display='block';msgEl.style.color='var(--red)';msgEl.textContent='Please enter a tab name';return;}
