@@ -176,7 +176,9 @@ BROKER_TYPES = {
     'custom':            {'name': 'Custom',             'base': '', 'help': 'custom'},
 }
 
-FINNHUB_BASE = 'https://finnhub.io/api/v1'
+FINNHUB_BASE   = 'https://finnhub.io/api/v1'
+TWELVE_BASE    = 'https://api.twelvedata.com'
+TWELVE_KEY     = os.environ.get('TWELVE_DATA_KEY', '')
 
 # ── MAPS & CONSTANTS ──────────────────────────────────────────────────
 SECTOR_MAP = {
@@ -220,6 +222,31 @@ NAME_MAP = {
     'IPOE':'Social Capital Hedosophia','ALCC1':'AleAnna Inc',
     'XPOA':'XPO Inc','KCAC':'Kensington Capital','PLT':'Palantir ETF',
     'BRK.B':'Berkshire Hathaway B',
+    'DMYI':'dMY Technology Group',
+    'OAC':'Oaktree Acquisition Corp',
+    'LAA3':'LAA3 ETF',
+    'LLL':'L3Harris Technologies',
+    'UBR':'UBS MSCI Brazil ETF',
+    'MAG5':'Magnificent 7 ETF',
+    'EQQQ':'Invesco EQQQ Nasdaq-100',
+    'PONY':'Pony AI Inc',
+    'XPOA':'XPO Inc',
+    'KCAC':'Kensington Capital Acquisition',
+    'PLT':'Palantir Technologies ETF',
+    'IPOE':'Social Capital Hedosophia',
+    'ALCC1':'AleAnna Energy',
+    'SNII':'Spinnaker Nations II',
+    'GIG':'GigCapital4 Inc',
+    'HOD':'WisdomTree Crude Oil 2x ETP',
+    'BULL':'Direxion Daily S&P Bull 3x',
+    'ASST':'Asset Entities Inc',
+    'APLD':'Applied Digital Corp',
+    'IONQ':'IonQ Inc',
+    'RXRX':'Recursion Pharmaceuticals',
+    'ALAB':'Astera Labs Inc',
+    'RKLB':'Rocket Lab USA',
+    'LUNR':'Intuitive Machines',
+    'ACHR':'Archer Aviation',
 }
 
 LEVERAGE_MAP = {
@@ -512,6 +539,107 @@ def fh(endpoint, params={}):
     except Exception as e: print(f"FH error {endpoint}: {e}")
     return {}
 
+def td(endpoint, params={}):
+    """Twelve Data API helper - fallback for Finnhub"""
+    if not TWELVE_KEY: return {}
+    try:
+        p = dict(params); p["apikey"] = TWELVE_KEY
+        r = requests.get(f"{TWELVE_BASE}/{endpoint}", params=p, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("status") == "error":
+                print(f"TD {endpoint} error: {data.get('message','')}")
+                return {}
+            return data
+        print(f"TD {endpoint} returned {r.status_code}")
+    except Exception as e: print(f"TD error {endpoint}: {e}")
+    return {}
+
+def get_quote_td(symbol):
+    """Get quote from Twelve Data"""
+    data = td("price", {"symbol": symbol})
+    if data.get("price"):
+        price = float(data["price"])
+        return {"c": price, "d": 0, "dp": 0}
+    return {}
+
+def get_candles_td(symbol):
+    """Get candles from Twelve Data as fallback"""
+    data = td("time_series", {
+        "symbol": symbol, "interval": "1day",
+        "outputsize": 300, "format": "JSON"
+    })
+    if not data.get("values"): return {"closes":[],"timestamps":[],"volumes":[]}
+    values = data["values"]
+    values.reverse()  # Twelve Data returns newest first
+    closes = [float(v["close"]) for v in values]
+    timestamps = [int(__import__('datetime').datetime.strptime(v["datetime"],"%Y-%m-%d").timestamp()) for v in values]
+    volumes = [float(v.get("volume",0)) for v in values]
+    return {"closes": closes, "timestamps": timestamps, "volumes": volumes, "ts": time.time()}
+
+def get_indicators_td(symbol):
+    """Get RSI and MACD from Twelve Data"""
+    import concurrent.futures
+    def get_rsi():
+        return td("rsi", {"symbol": symbol, "interval": "1day", "time_period": 14})
+    def get_macd():
+        return td("macd", {"symbol": symbol, "interval": "1day"})
+    def get_ma50():
+        return td("ema", {"symbol": symbol, "interval": "1day", "time_period": 50})
+    def get_ma200():
+        return td("ema", {"symbol": symbol, "interval": "1day", "time_period": 200})
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            f_rsi  = ex.submit(get_rsi)
+            f_macd = ex.submit(get_macd)
+            f_ma50 = ex.submit(get_ma50)
+            f_ma200= ex.submit(get_ma200)
+            rsi_d  = f_rsi.result(timeout=10)
+            macd_d = f_macd.result(timeout=10)
+            ma50_d = f_ma50.result(timeout=10)
+            ma200_d= f_ma200.result(timeout=10)
+    except: return {}
+    try:
+        rsi  = float(rsi_d.get("values",[{}])[0].get("rsi",0)) if rsi_d.get("values") else None
+        macd_val = float(macd_d.get("values",[{}])[0].get("macd",0)) if macd_d.get("values") else None
+        macd_sig = float(macd_d.get("values",[{}])[0].get("macd_signal",0)) if macd_d.get("values") else None
+        ma50  = float(ma50_d.get("values",[{}])[0].get("ema",0)) if ma50_d.get("values") else None
+        ma200 = float(ma200_d.get("values",[{}])[0].get("ema",0)) if ma200_d.get("values") else None
+        signal = score_signal(rsi, macd_val, macd_sig, ma50, ma200, [])
+        return {"rsi":rsi,"macd":macd_val,"macd_signal":macd_sig,
+                "ma50":ma50,"ma200":ma200,"signal":signal,
+                "overbought": rsi>70 if rsi else False,
+                "oversold": rsi<30 if rsi else False,
+                "source":"twelvedata","ts":time.time()}
+    except: return {}
+
+def get_news_td(symbol):
+    """Get news from Twelve Data"""
+    data = td("news", {"symbol": symbol, "outputsize": 10})
+    items = data if isinstance(data, list) else data.get("data", [])
+    return [{
+        "headline": n.get("title",""),
+        "summary": n.get("description","")[:300],
+        "url": n.get("url",""),
+        "source": n.get("source",""),
+        "datetime": int(__import__('datetime').datetime.strptime(
+            n["published_at"][:19],"%Y-%m-%dT%H:%M:%S").timestamp())
+            if n.get("published_at") else 0
+    } for n in items[:10]]
+
+def get_screener_suggestions():
+    """Get dynamic stock suggestions using Twelve Data screener signals"""
+    # Screen for momentum stocks using Twelve Data
+    screener_params = {
+        "exchange": "NASDAQ,NYSE",
+        "country": "United States",
+        "outputsize": 40,
+        "type": "Common Stock"
+    }
+    # Get stocks with strong volume 
+    gainers = td("stocks", screener_params)
+    return []  # Will be populated below
+
 def clean_symbol(ticker):
     s = ticker.split("_")[0]
     s = re.sub(r"^\d+", "", s)
@@ -604,6 +732,13 @@ def get_candles(symbol):
     to_ts=int(time.time()); from_ts=to_ts-(300*86400)
     data=fh("stock/candle",{"symbol":symbol,"resolution":"D","from":from_ts,"to":to_ts})
     if not data or data.get("s")!="ok":
+        # Fallback to Twelve Data
+        print(f"Finnhub candles failed for {symbol} - trying Twelve Data")
+        td_data = get_candles_td(symbol)
+        if td_data.get("closes"):
+            td_data["ts"] = time.time()
+            _candle_cache[symbol] = td_data
+            return td_data
         entry={"closes":[],"timestamps":[],"volumes":[],"ts":time.time()}
     else:
         entry={"closes":data.get("c",[]),"timestamps":data.get("t",[]),"volumes":data.get("v",[]),"ts":time.time()}
@@ -615,6 +750,11 @@ def get_indicators(symbol):
         return _ind_cache[symbol]
     candles=get_candles(symbol); closes=candles["closes"]
     if len(closes)<30:
+        # Fallback to Twelve Data for indicators
+        print(f"Not enough candles for {symbol} - trying Twelve Data indicators")
+        td_ind = get_indicators_td(symbol)
+        if td_ind.get("rsi"):
+            _ind_cache[symbol]=td_ind; return td_ind
         entry={"rsi":None,"macd":None,"macd_signal":None,"macd_hist":None,
                "bb_upper":None,"bb_middle":None,"bb_lower":None,
                "ma50":None,"ma200":None,"signal":"Neutral","ts":time.time()}
@@ -641,6 +781,12 @@ def get_quote(symbol):
     if cache_valid(_quote_cache.get(symbol), QUOTE_TTL):
         return _quote_cache[symbol]
     data=fh("quote",{"symbol":symbol})
+    if not data.get("c"):
+        # Fallback to Twelve Data
+        td_quote = get_quote_td(symbol)
+        if td_quote.get("c"):
+            entry={**td_quote,"source":"twelvedata","ts":time.time()}
+            _quote_cache[symbol]=entry; return entry
     entry={**data,"ts":time.time()}
     _quote_cache[symbol]=entry; return entry
 
@@ -701,9 +847,22 @@ def basic_holding(h, account_label):
             uq=_quote_cache.get(lev_info["underlying"],{})
             h_copy["underlyingSymbol"]=lev_info["underlying"]
             h_copy["underlyingPrice"]=uq.get("c")
+    # Determine display currency for avg/current price columns
+    if is_uk_etp:
+        display_currency = "GBP"   # converted from pence already
+    elif us:
+        display_currency = "USD"
+    else:
+        display_currency = "GBP"   # UK broker stocks in GBP
+
+    # Account-level currency override (for future US/India brokers)
+    broker = account_label  # will be used when we add broker type
+
     return {**h_copy,
         "symbol":symbol,"name":_profile_cache.get(symbol,{}).get("name","") or NAME_MAP.get(symbol,""),
-        "sector":sector,"portfolioValue":portfolio_value,"currency":"GBP",
+        "sector":sector,"portfolioValue":portfolio_value,
+        "currency":display_currency,   # for avg/current price display
+        "portfolioCurrency":"GBP",     # always GBP for total holding + P&L
         "isUkEtp":is_uk_etp,"account":account_label,"leverage":leverage,
         "indSymbol":ind_sym,"indicators":{},"signal":"Loading...","news":{},
     }
@@ -1079,9 +1238,26 @@ def api_profile(symbol):
 @require_login
 def api_news(symbol):
     today=datetime.now().strftime("%Y-%m-%d")
+    week_ago=(datetime.now()-timedelta(days=7)).strftime("%Y-%m-%d")
     month_ago=(datetime.now()-timedelta(days=30)).strftime("%Y-%m-%d")
-    news=fh("company-news",{"symbol":symbol,"from":month_ago,"to":today})
-    return jsonify(news[:20] if isinstance(news,list) else [])
+    # Fetch from Finnhub
+    news=fh("company-news",{"symbol":symbol,"from":week_ago,"to":today})
+    if not news or len(news)<3:
+        news=fh("company-news",{"symbol":symbol,"from":month_ago,"to":today})
+    fh_news = news if isinstance(news,list) else []
+    # Also fetch from Twelve Data and merge
+    td_news = get_news_td(symbol)
+    # Merge and deduplicate by headline
+    seen = set()
+    combined = []
+    for n in (fh_news + td_news):
+        h = (n.get("headline") or n.get("title",""))[:50]
+        if h and h not in seen:
+            seen.add(h)
+            combined.append(n)
+    # Sort by datetime descending
+    combined.sort(key=lambda x: x.get("datetime",0), reverse=True)
+    return jsonify(combined[:20])
 
 @app.route('/api/news/market/<category>')
 @require_login
@@ -1102,8 +1278,9 @@ def api_earnings():
     if cache_valid(_earnings_cache.get("entry"), EARNINGS_TTL):
         return jsonify(_earnings_cache["entry"]["data"])
     today=datetime.now().strftime("%Y-%m-%d")
-    future=(datetime.now()+timedelta(days=90)).strftime("%Y-%m-%d")
-    past=(datetime.now()-timedelta(days=90)).strftime("%Y-%m-%d")
+    tomorrow=(datetime.now()+timedelta(days=1)).strftime("%Y-%m-%d")
+    future=(datetime.now()+timedelta(days=30)).strftime("%Y-%m-%d")
+    past=(datetime.now()-timedelta(days=30)).strftime("%Y-%m-%d")
     import concurrent.futures
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
@@ -1152,7 +1329,28 @@ def api_earnings():
 @app.route('/api/suggestions')
 @require_login
 def api_suggestions():
-    return jsonify({
+    # Enrich suggestions with live price + indicator data
+    def enrich_suggestion(s):
+        sym = s["ticker"]
+        q = get_quote(sym)
+        ind = _ind_cache.get(sym, {})
+        if not ind:
+            ind = {}
+        if q.get("c"):
+            s["currentPrice"] = round(q["c"], 2)
+            s["dayChange"] = round(q.get("dp", 0), 2)
+        if ind.get("signal"):
+            s["liveSignal"] = ind["signal"]
+        if q.get("dp") is not None:
+            s["perf"]["1d"] = round(q.get("dp", 0), 1)
+        # Add live RSI context to reason
+        if ind.get("rsi"):
+            rsi = ind["rsi"]
+            if rsi < 30: s["reason"] += f" RSI oversold ({rsi:.0f}) — potential bounce."
+            elif rsi > 70: s["reason"] += f" RSI overbought ({rsi:.0f}) — watch for pullback."
+        return s
+
+    suggestions = {
         "1day":[
             {"ticker":"NVDA","company":"NVIDIA Corp","sector":"AI","risk":"High","reason":"Strong AI chip momentum. MACD bullish crossover.","perf":{"1d":3.2,"2d":5.1,"1w":-1.2,"1m":12.4},"targets":{"1d":3,"2d":5,"1w":8,"1m":18,"1y":55}},
             {"ticker":"AMD","company":"Advanced Micro Devices","sector":"Technology","risk":"Medium","reason":"Data centre GPU demand rising. RSI recovered.","perf":{"1d":2.1,"2d":3.8,"1w":-2.1,"1m":8.3},"targets":{"1d":2,"2d":4,"1w":7,"1m":15,"1y":40}},
@@ -1201,7 +1399,29 @@ def api_suggestions():
             {"ticker":"ACHR","company":"Archer Aviation","sector":"Technology","risk":"Very High","reason":"eVTOL air taxi leader. United Airlines partnership.","perf":{"1d":2.8,"2d":4.5,"1w":9.8,"1m":32.1},"targets":{"1d":3,"2d":5,"1w":12,"1m":28,"1y":180}},
             {"ticker":"ARKG","company":"ARK Genomic Revolution ETF","sector":"Biotech","risk":"High","reason":"Genomic revolution multi-year theme.","perf":{"1d":0.8,"2d":1.5,"1w":3.2,"1m":8.9},"targets":{"1d":1,"2d":2,"1w":5,"1m":15,"1y":65}},
         ],
-    })
+    }
+    # Enrich with live prices
+    for tf in suggestions:
+        suggestions[tf] = [enrich_suggestion(s) for s in suggestions[tf]]
+    return jsonify(suggestions)
+
+@app.route('/api/watchlist/user', methods=['GET'])
+@require_login
+def get_user_watchlist():
+    user = get_user(current_user())
+    return jsonify(user.get('watchlist', []) if user else [])
+
+@app.route('/api/watchlist/user', methods=['POST'])
+@require_login
+def save_user_watchlist():
+    data = request.json or {}
+    wl = data.get('watchlist', [])
+    users = load_users()
+    username = current_user()
+    if username in users:
+        users[username]['watchlist'] = wl
+        save_users(users)
+    return jsonify({'success': True})
 
 @app.route('/api/cache/status')
 @require_login
@@ -1212,7 +1432,9 @@ def api_cache_status():
         "profiles":len(_profile_cache),"quotes":len(_quote_cache),
         "bg_symbols":len(_bg_symbols),
         "users":user_count,
-        "db_connected":bool(DATABASE_URL)
+        "db_connected":bool(DATABASE_URL),
+        "finnhub_configured":bool(os.environ.get('FINNHUB_KEY','')),
+        "twelvedata_configured":bool(TWELVE_KEY)
     })
 
 if __name__=="__main__":
