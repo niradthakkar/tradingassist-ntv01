@@ -10,51 +10,50 @@ app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 # ── PATHS ─────────────────────────────────────────────────────────────
 USERS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.json')
 
-# ── USER STORAGE (PostgreSQL with file fallback) ─────────────────────
+# ── USER STORAGE (Supabase REST API + file fallback) ─────────────────
 import base64
 
-DATABASE_URL = os.environ.get('DATABASE_URL', '')
+# Supabase REST API config
+SUPABASE_URL = os.environ.get('SUPABASE_URL', '')      # e.g. https://xxxx.supabase.co
+SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')      # service_role or anon key
 
-def get_db():
-    """Get PostgreSQL connection using pg8000 (pure Python)"""
-    import pg8000.native
-    import urllib.parse
-    url = urllib.parse.urlparse(DATABASE_URL)
-    conn = pg8000.native.Connection(
-        user=url.username,
-        password=url.password,
-        host=url.hostname,
-        port=url.port or 5432,
-        database=url.path.lstrip('/'),
-        ssl_context=True
-    )
-    return conn
+def supa_headers():
+    return {
+        'apikey': SUPABASE_KEY,
+        'Authorization': f'Bearer {SUPABASE_KEY}',
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+    }
 
 def init_db():
-    """Create users table if it doesn't exist"""
-    if not DATABASE_URL:
+    """Verify Supabase connection"""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("Supabase not configured - using file storage")
         return
     try:
-        conn = get_db()
-        conn.run("""
-            CREATE TABLE IF NOT EXISTS users (
-                email TEXT PRIMARY KEY,
-                data TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        """)
-        print("Database initialised successfully")
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/users?limit=1",
+            headers=supa_headers(), timeout=10)
+        if r.status_code in [200, 206]:
+            print("Supabase connected successfully!")
+        elif r.status_code == 404:
+            print("Supabase connected but users table not found - please create it")
+        else:
+            print(f"Supabase connection check: {r.status_code} {r.text[:100]}")
     except Exception as e:
-        print(f"Database init error: {e}")
+        print(f"Supabase init error: {e}")
 
 def load_users():
-    """Load all users from PostgreSQL or file fallback"""
-    if DATABASE_URL:
+    """Load all users from Supabase REST API or file fallback"""
+    if SUPABASE_URL and SUPABASE_KEY:
         try:
-            conn = get_db()
-            rows = conn.run("SELECT email, data FROM users")
-            return {row[0]: json.loads(row[1]) for row in rows}
+            r = requests.get(
+                f"{SUPABASE_URL}/rest/v1/users?select=email,data",
+                headers=supa_headers(), timeout=10)
+            if r.status_code == 200:
+                rows = r.json()
+                return {row['email']: json.loads(row['data']) for row in rows}
+            print(f"Supabase load error: {r.status_code} {r.text[:100]}")
         except Exception as e:
             print(f"DB load error: {e}")
     # File fallback
@@ -65,17 +64,17 @@ def load_users():
     return {}
 
 def save_users(users):
-    """Save all users to PostgreSQL or file fallback"""
-    if DATABASE_URL:
+    """Save all users via Supabase REST API or file fallback"""
+    if SUPABASE_URL and SUPABASE_KEY:
         try:
-            conn = get_db()
             for email, data in users.items():
-                conn.run("""
-                    INSERT INTO users (email, data, updated_at)
-                    VALUES (:email, :data, NOW())
-                    ON CONFLICT (email) DO UPDATE
-                    SET data = EXCLUDED.data, updated_at = NOW()
-                """, email=email, data=json.dumps(data))
+                r = requests.post(
+                    f"{SUPABASE_URL}/rest/v1/users",
+                    headers={**supa_headers(), 'Prefer': 'resolution=merge-duplicates'},
+                    json={'email': email, 'data': json.dumps(data)},
+                    timeout=10)
+                if r.status_code not in [200, 201]:
+                    print(f"Supabase save error: {r.status_code} {r.text[:100]}")
             return
         except Exception as e:
             print(f"DB save error: {e}")
@@ -87,18 +86,22 @@ def save_users(users):
         print(f"File save error: {e}")
 
 def get_user(username):
-    """Get single user efficiently from DB"""
-    if DATABASE_URL:
+    """Get single user via Supabase REST API or file fallback"""
+    if SUPABASE_URL and SUPABASE_KEY:
         try:
-            conn = get_db()
-            rows = conn.run("SELECT data FROM users WHERE email = :email", email=username)
-            return json.loads(rows[0][0]) if rows else None
+            r = requests.get(
+                f"{SUPABASE_URL}/rest/v1/users?email=eq.{username}&select=data",
+                headers=supa_headers(), timeout=10)
+            if r.status_code == 200:
+                rows = r.json()
+                return json.loads(rows[0]['data']) if rows else None
+            print(f"Supabase get_user error: {r.status_code}")
         except Exception as e:
             print(f"DB get_user error: {e}")
     # File fallback
     return load_users().get(username)
 
-# Initialise database on startup
+# Initialise on startup
 init_db()
 
 def hash_password(pw):
