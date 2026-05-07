@@ -477,6 +477,24 @@ BROKER_REGISTRY = {
     },
 }
 
+# Account currency mapping
+ACCOUNT_CURRENCY = {
+    'trading212_isa':    {'currency':'GBP','symbol':'£','region':'UK'},
+    'trading212_invest': {'currency':'GBP','symbol':'£','region':'UK'},
+    'trading212_us':     {'currency':'USD','symbol':'$','region':'US'},
+}
+
+def get_account_currency(broker_id, user_country='GB'):
+    """Get account settlement currency based on broker and user country"""
+    if broker_id in ACCOUNT_CURRENCY:
+        return ACCOUNT_CURRENCY[broker_id]
+    # Default based on user country
+    if user_country == 'US':   return {'currency':'USD','symbol':'$','region':'US'}
+    if user_country == 'IN':   return {'currency':'INR','symbol':'₹','region':'IN'}
+    if user_country == 'EU' or user_country in ['DE','FR','ES','IT','NL','SE','NO','DK','CH']:
+        return {'currency':'EUR','symbol':'€','region':'EU'}
+    return {'currency':'GBP','symbol':'£','region':'UK'}
+
 def fetch_portfolio(broker_id, api_key):
     """Fetch portfolio using broker-specific method"""
     broker = BROKER_REGISTRY.get(broker_id)
@@ -812,13 +830,21 @@ _bg_symbols = set()
 _bg_lock    = threading.Lock()
 
 def background_prefetch():
+    # Pre-fetch GBP/USD exchange rate on startup
+    try:
+        get_quote("OANDA:GBP_USD")
+        get_quote("OANDA:USD_GBP")
+    except: pass
     while True:
+        # Keep FX rates fresh
+        try:
+            get_quote("OANDA:GBP_USD")
+        except: pass
         with _bg_lock: syms=list(_bg_symbols)
         for sym in syms:
             try:
                 if not cache_valid(_ind_cache.get(sym), IND_TTL):
                     get_indicators(sym)
-                    # Slower for Finnhub, faster for TD
                     time.sleep(0.8 if sym in TD_PREFERRED else 1.2)
                 if not cache_valid(_profile_cache.get(sym), PROFILE_TTL):
                     get_profile(sym); time.sleep(0.4)
@@ -836,65 +862,101 @@ def register_symbols(holdings):
             if sym: _bg_symbols.add(sym)
 
 # ── HOLDING BUILDER ───────────────────────────────────────────────────
-def basic_holding(h, account_label):
-    ticker=h.get("ticker",""); symbol=clean_symbol(ticker)
-    qty=h.get("quantity",0) or 0; avg=h.get("averagePrice",0) or 0
-    ppl=h.get("ppl") or 0; us=is_us(ticker)
-    lev_info=get_leverage_info(ticker)
-    leverage=lev_info["leverage"] if lev_info else None
-    ind_sym=get_indicator_symbol(ticker,symbol)
-    sector=SECTOR_MAP.get(symbol,"Other")
+def basic_holding(h, account_label, acct_cur=None):
+    ticker  = h.get("ticker",""); symbol=clean_symbol(ticker)
+    qty     = h.get("quantity",0) or 0
+    avg     = h.get("averagePrice",0) or 0
+    ppl     = h.get("ppl") or 0        # T212 P&L in account currency (GBP)
+    us      = is_us(ticker)
+    lev_info= get_leverage_info(ticker)
+    leverage= lev_info["leverage"] if lev_info else None
+    ind_sym = get_indicator_symbol(ticker,symbol)
+    sector  = SECTOR_MAP.get(symbol,"Other")
     if lev_info:
         und=lev_info.get("underlying","")
         if und in ["AMD","PLTR","ARM","TSM","MU"]: sector="Leveraged Tech"
-        elif und in ["OIL"]: sector="Leveraged Commodity"
-        elif und in ["SOXX","QQQ"]: sector="Leveraged ETF"
-    is_uk_etp=ticker.endswith("l_EQ") and not us
+        elif und in ["OIL"]:                        sector="Leveraged Commodity"
+        elif und in ["SOXX","QQQ"]:                 sector="Leveraged ETF"
+
+    is_uk_etp = ticker.endswith("l_EQ") and not us
+    gbp_usd   = _quote_cache.get("OANDA:GBP_USD",{}).get("c",0) or 1.27
+
+    # ── PRICES ──────────────────────────────────────────────────────
     if is_uk_etp:
-        current_price_gbp=(h.get("currentPrice",0) or 0)/100
-        avg_price_gbp=avg/100
-        portfolio_value=round(qty*current_price_gbp,2)
-    else:
-        current_price_gbp=h.get("currentPrice",0) or 0
-        avg_price_gbp=avg
-        # Use currentPrice * qty for total holding (most accurate)
-        if current_price_gbp and qty:
-            portfolio_value=round(current_price_gbp*qty,2)
-        else:
-            portfolio_value=round((qty*avg)+ppl,2)
-    h_copy=dict(h)
-    if is_uk_etp:
-        h_copy["currentPrice"]=round(current_price_gbp,4)
-        h_copy["averagePrice"]=round(avg_price_gbp,4)
-        h_copy["penceAvg"]=round(avg,2)
-        h_copy["penceCurrent"]=round(h.get("currentPrice",0) or 0,2)
-        if lev_info and lev_info.get("underlying"):
-            uq=_quote_cache.get(lev_info["underlying"],{})
-            h_copy["underlyingSymbol"]=lev_info["underlying"]
-            h_copy["underlyingPrice"]=uq.get("c")
-    # Determine display currency for avg/current price columns
-    if is_uk_etp:
-        display_currency = "GBP"   # converted from pence already
+        # UK ETP: prices in pence → convert to GBP
+        current_price_native = h.get("currentPrice",0) or 0  # pence
+        avg_price_native      = avg                            # pence
+        current_price_gbp     = round(current_price_native/100, 4)
+        avg_price_gbp         = round(avg/100, 4)
+        portfolio_value       = round(qty * current_price_gbp, 2)
+        display_currency      = "GBP"
     elif us:
-        display_currency = "USD"
+        # US stock: prices in USD
+        current_price_native = h.get("currentPrice",0) or 0  # USD
+        avg_price_native      = avg                            # USD
+        current_price_gbp     = round(current_price_native/gbp_usd, 4) if gbp_usd else 0
+        avg_price_gbp         = round(avg/gbp_usd, 4) if gbp_usd else avg
+        # Total holding in GBP = current USD price * qty / GBP_USD
+        portfolio_value       = round((current_price_native * qty)/gbp_usd, 2) if gbp_usd else round((qty*avg)+ppl,2)
+        display_currency      = "USD"
     else:
-        display_currency = "GBP"   # UK broker stocks in GBP
+        # UK stock: prices already in GBP
+        current_price_native = h.get("currentPrice",0) or 0
+        avg_price_native      = avg
+        current_price_gbp     = current_price_native
+        avg_price_gbp         = avg
+        portfolio_value       = round((qty * current_price_native) if current_price_native else (qty*avg)+ppl, 2)
+        display_currency      = "GBP"
 
-    # Account-level currency override (for future US/India brokers)
-    broker = account_label  # will be used when we add broker type
+    # ── ACCOUNT SETTLEMENT CURRENCY ─────────────────────────────────
+    # Determines what currency P&L and Total Holding are shown in
+    if acct_cur:
+        settle_currency = acct_cur['currency']
+        settle_symbol   = acct_cur['symbol']
+    else:
+        settle_currency = 'GBP'
+        settle_symbol   = '£'
 
-    # Get day change from quote cache
+    # ── P&L ─────────────────────────────────────────────────────────
+    # T212 ppl IS in account settlement currency ✅
+    ppl_gbp = round(ppl, 2)
+
+    # ── DAY CHANGE ──────────────────────────────────────────────────
     q = _quote_cache.get(ind_sym, {})
     day_change_pct = q.get("dp", 0) or 0
 
+    h_copy = dict(h)
+    if is_uk_etp:
+        h_copy["currentPrice"] = current_price_gbp
+        h_copy["averagePrice"] = avg_price_gbp
+        h_copy["penceAvg"]     = round(avg, 2)
+        h_copy["penceCurrent"] = round(current_price_native, 2)
+        if lev_info and lev_info.get("underlying"):
+            uq = _quote_cache.get(lev_info["underlying"],{})
+            h_copy["underlyingSymbol"] = lev_info["underlying"]
+            h_copy["underlyingPrice"]  = uq.get("c")
+    elif us:
+        # Keep native USD prices for display, add GBP converted
+        h_copy["currentPriceGBP"] = current_price_gbp
+        h_copy["avgPriceGBP"]     = avg_price_gbp
+
     return {**h_copy,
-        "symbol":symbol,"name":_profile_cache.get(symbol,{}).get("name","") or NAME_MAP.get(symbol,""),
-        "sector":sector,"portfolioValue":portfolio_value,
-        "currency":display_currency,
-        "portfolioCurrency":"GBP",
-        "dayChangePct":round(day_change_pct,2),
-        "isUkEtp":is_uk_etp,"account":account_label,"leverage":leverage,
-        "indSymbol":ind_sym,"indicators":{},"signal":"Loading...","news":{},
+        "symbol":          symbol,
+        "name":            _profile_cache.get(symbol,{}).get("name","") or NAME_MAP.get(symbol,""),
+        "sector":          sector,
+        "portfolioValue":  portfolio_value,
+        "ppl":             ppl_gbp,
+        "currency":        display_currency,    # for avg/current price display
+        "settleCurrency":  settle_currency,     # account settlement currency
+        "settleSymbol":    settle_symbol,       # £ $ ₹ €
+        "dayChangePct":    round(day_change_pct,2),
+        "isUkEtp":         is_uk_etp,
+        "account":         account_label,
+        "leverage":        leverage,
+        "indSymbol":       ind_sym,
+        "indicators":      {},
+        "signal":          "Loading...",
+        "news":            {},
     }
 
 # ── USER PORTFOLIO FETCHER ────────────────────────────────────────────
@@ -914,8 +976,9 @@ def get_user_portfolio(username):
         broker=acct.get("broker","trading212_invest")
 
         portfolio, summary = fetch_portfolio(broker, api_key)
+        acct_cur = get_account_currency(broker, user.get('country','GB'))
         if isinstance(portfolio, list):
-            enriched=[basic_holding(h, label) for h in portfolio]
+            enriched=[basic_holding(h, label, acct_cur) for h in portfolio]
             enriched.sort(key=lambda x: x.get("portfolioValue",0), reverse=True)
             register_symbols(enriched)
             all_holdings.append({"label":label,"broker":broker,"holdings":enriched,"summary":summary or {}})
@@ -1226,8 +1289,15 @@ def api_summary():
     else:
         portfolio=get_user_portfolio(username)
         _portfolio_cache[cache_key]={'data':portfolio,'ts':time.time()}
-    # Build combined summary
+    # Get user's country for currency
+    user = get_user(username) or {}
+    user_country = user.get('country','GB')
+    base_currency = 'USD' if user_country == 'US' else 'INR' if user_country == 'IN' else 'GBP'
+    currency_symbol = '$' if base_currency == 'USD' else '₹' if base_currency == 'INR' else '£'
+
+    # Build combined summary from T212 data
     total_value=0; total_cash=0; total_unrealised=0; total_realised=0
+    total_day_change=0
     for acct in portfolio.get('summaries',[]):
         s=acct.get('summary',{})
         total_value+=s.get('totalValue',0) or 0
@@ -1235,23 +1305,54 @@ def api_summary():
         inv=(s.get('investments',{}) or {})
         total_unrealised+=inv.get('unrealizedProfitLoss',0) or 0
         total_realised+=inv.get('realizedProfitLoss',0) or 0
-    # Calculate day change across all holdings
+        # T212 provides result field which reflects today's P&L change
+        total_day_change+=inv.get('result',0) or 0
+    # Calculate day change - fetch quotes if not cached
     all_holdings_flat = []
     for acct in portfolio.get('accounts',[]):
         all_holdings_flat.extend(acct.get('holdings',[]))
+
+    # Get unique symbols and fetch quotes in parallel
+    import concurrent.futures
+    unique_syms = list({h.get('indSymbol') or h.get('symbol','') for h in all_holdings_flat if h.get('indSymbol') or h.get('symbol')})
     
-    total_day_change = 0
-    total_day_change_pct = 0
-    holdings_with_change = 0
-    for holding in all_holdings_flat:
-        sym = holding.get('indSymbol') or holding.get('symbol','')
-        q = _quote_cache.get(sym, {})
-        if q.get('dp') and holding.get('portfolioValue'):
-            day_chg = holding['portfolioValue'] * q['dp'] / 100
-            total_day_change += day_chg
-            holdings_with_change += 1
-    if total_value and holdings_with_change:
-        total_day_change_pct = round(total_day_change / total_value * 100, 2)
+    def fetch_q(sym):
+        if not cache_valid(_quote_cache.get(sym), QUOTE_TTL):
+            return sym, get_quote(sym)
+        return sym, _quote_cache.get(sym, {})
+    
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+            futs = {ex.submit(fetch_q, sym): sym for sym in unique_syms[:20]}
+            for f in concurrent.futures.as_completed(futs, timeout=8):
+                try: f.result()
+                except: pass
+    except: pass
+
+    # Use T212's own result field for day change (most accurate)
+    # Also fetch quotes to supplement if T212 result is 0
+    gbp_usd = _quote_cache.get("OANDA:GBP_USD", {}).get("c", 0) or 1.27
+    if total_day_change == 0:
+        # Fallback: calculate from quote day changes
+        all_holdings_flat = []
+        for acct in portfolio.get('accounts',[]):
+            all_holdings_flat.extend(acct.get('holdings',[]))
+        for holding in all_holdings_flat:
+            sym = holding.get('indSymbol') or holding.get('symbol','')
+            qty = holding.get('quantity', 0) or 0
+            is_usd = holding.get('currency','') == 'USD'
+            is_etp = holding.get('isUkEtp', False)
+            q = _quote_cache.get(sym, {})
+            d = q.get('d', 0) or 0
+            if d and qty:
+                if is_usd:
+                    total_day_change += (d * qty) / gbp_usd
+                elif is_etp:
+                    total_day_change += (d / 100) * qty
+                else:
+                    total_day_change += d * qty
+    total_day_change_pct = round((total_day_change / total_value) * 100, 2) if total_value else 0
+    total_day_change = round(total_day_change, 2)
 
     return jsonify({
         'accounts':portfolio.get('summaries',[]),
@@ -1261,7 +1362,9 @@ def api_summary():
             'dayChange':round(total_day_change,2),
             'dayChangePct':round(total_day_change_pct,2),
             'unrealizedPnL':round(total_unrealised,2),
-            'realizedPnL':round(total_realised,2)
+            'realizedPnL':round(total_realised,2),
+            'currency':base_currency,
+            'currencySymbol':currency_symbol,
         }
     })
 
@@ -1374,6 +1477,7 @@ def api_quote(symbol):
 def api_earnings():
     if cache_valid(_earnings_cache.get("entry"), EARNINGS_TTL):
         return jsonify(_earnings_cache["entry"]["data"])
+    print(f"Earnings: fetching fresh data from Finnhub...")
     today=datetime.now().strftime("%Y-%m-%d")
     tomorrow=(datetime.now()+timedelta(days=1)).strftime("%Y-%m-%d")
     future=(datetime.now()+timedelta(days=30)).strftime("%Y-%m-%d")
@@ -1551,55 +1655,59 @@ def save_user_watchlist():
         save_users(users)
     return jsonify({'success': True})
 
+_market_cache = {}   # market data cache
+MARKET_TTL = 300     # 5 minutes
+
 @app.route('/api/market/indices')
 @require_login
 def api_market_indices():
     """Fetch major market indices, commodities, crypto"""
     import concurrent.futures
+    # Check cache first
+    if cache_valid(_market_cache.get("data"), MARKET_TTL):
+        return jsonify(_market_cache["data"])
 
     # Market symbols - comprehensive like Yahoo Finance
     symbols = {
         "us_indices": [
-            {"symbol":"^GSPC","name":"S&P 500","type":"us_indices","currency":"USD"},
-            {"symbol":"^IXIC","name":"NASDAQ","type":"us_indices","currency":"USD"},
-            {"symbol":"^DJI","name":"Dow Jones","type":"us_indices","currency":"USD"},
-            {"symbol":"^RUT","name":"Russell 2000","type":"us_indices","currency":"USD"},
-            {"symbol":"^VIX","name":"VIX Fear Index","type":"us_indices","currency":""},
+            {"symbol":"^GSPC","name":"S&P 500","type":"us_indices","currency":"USD","source":"twelvedata"},
+            {"symbol":"^IXIC","name":"NASDAQ Composite","type":"us_indices","currency":"USD","source":"twelvedata"},
+            {"symbol":"^DJI","name":"Dow Jones","type":"us_indices","currency":"USD","source":"twelvedata"},
+            {"symbol":"^RUT","name":"Russell 2000","type":"us_indices","currency":"USD","source":"twelvedata"},
+            {"symbol":"^VIX","name":"VIX Fear Index","type":"us_indices","currency":"","source":"twelvedata"},
+            {"symbol":"SPY","name":"S&P 500 ETF","type":"us_indices","currency":"USD","source":"finnhub"},
+            {"symbol":"QQQ","name":"NASDAQ ETF","type":"us_indices","currency":"USD","source":"finnhub"},
         ],
         "uk_indices": [
-            {"symbol":"^FTSE","name":"FTSE 100","type":"uk_indices","currency":"GBP"},
-            {"symbol":"^FTMC","name":"FTSE 250","type":"uk_indices","currency":"GBP"},
-            {"symbol":"^FTAI","name":"FTSE AIM All-Share","type":"uk_indices","currency":"GBP"},
-            {"symbol":"OANDA:GBP_USD","name":"GBP/USD","type":"uk_indices","currency":""},
-            {"symbol":"OANDA:GBP_EUR","name":"GBP/EUR","type":"uk_indices","currency":""},
+            {"symbol":"^FTSE","name":"FTSE 100","type":"uk_indices","currency":"GBP","source":"twelvedata"},
+            {"symbol":"^FTMC","name":"FTSE 250","type":"uk_indices","currency":"GBP","source":"twelvedata"},
+            {"symbol":"OANDA:GBP_USD","name":"GBP/USD","type":"uk_indices","currency":"","source":"twelvedata"},
+            {"symbol":"OANDA:GBP_EUR","name":"GBP/EUR","type":"uk_indices","currency":"","source":"twelvedata"},
+            {"symbol":"OANDA:GBP_INR","name":"GBP/INR","type":"uk_indices","currency":"","source":"twelvedata"},
         ],
         "india_indices": [
-            {"symbol":"^BSESN","name":"BSE SENSEX","type":"india_indices","currency":"INR"},
-            {"symbol":"^NSEI","name":"NSE Nifty 50","type":"india_indices","currency":"INR"},
-            {"symbol":"^NSEBANK","name":"Nifty Bank","type":"india_indices","currency":"INR"},
-            {"symbol":"^CNXIT","name":"Nifty IT","type":"india_indices","currency":"INR"},
-            {"symbol":"OANDA:USD_INR","name":"USD/INR","type":"india_indices","currency":""},
-            {"symbol":"OANDA:GBP_INR","name":"GBP/INR","type":"india_indices","currency":""},
+            {"symbol":"^BSESN","name":"BSE SENSEX","type":"india_indices","currency":"INR","source":"twelvedata"},
+            {"symbol":"^NSEI","name":"NSE Nifty 50","type":"india_indices","currency":"INR","source":"twelvedata"},
+            {"symbol":"^NSEBANK","name":"Nifty Bank","type":"india_indices","currency":"INR","source":"twelvedata"},
+            {"symbol":"OANDA:USD_INR","name":"USD/INR","type":"india_indices","currency":"","source":"twelvedata"},
+            {"symbol":"OANDA:GBP_INR","name":"GBP/INR","type":"india_indices","currency":"","source":"twelvedata"},
         ],
         "europe_indices": [
-            {"symbol":"^STOXX50E","name":"Euro Stoxx 50","type":"europe_indices","currency":"EUR"},
-            {"symbol":"^GDAXI","name":"DAX (Germany)","type":"europe_indices","currency":"EUR"},
-            {"symbol":"^FCHI","name":"CAC 40 (France)","type":"europe_indices","currency":"EUR"},
-            {"symbol":"^IBEX","name":"IBEX 35 (Spain)","type":"europe_indices","currency":"EUR"},
-            {"symbol":"^AEX","name":"AEX (Netherlands)","type":"europe_indices","currency":"EUR"},
-            {"symbol":"^SSMI","name":"SMI (Switzerland)","type":"europe_indices","currency":"CHF"},
-            {"symbol":"^OMX","name":"OMX (Sweden)","type":"europe_indices","currency":"SEK"},
-            {"symbol":"OANDA:EUR_USD","name":"EUR/USD","type":"europe_indices","currency":""},
+            {"symbol":"^STOXX50E","name":"Euro Stoxx 50","type":"europe_indices","currency":"EUR","source":"twelvedata"},
+            {"symbol":"^GDAXI","name":"DAX (Germany)","type":"europe_indices","currency":"EUR","source":"twelvedata"},
+            {"symbol":"^FCHI","name":"CAC 40 (France)","type":"europe_indices","currency":"EUR","source":"twelvedata"},
+            {"symbol":"^IBEX","name":"IBEX 35 (Spain)","type":"europe_indices","currency":"EUR","source":"twelvedata"},
+            {"symbol":"^AEX","name":"AEX (Netherlands)","type":"europe_indices","currency":"EUR","source":"twelvedata"},
+            {"symbol":"OANDA:EUR_USD","name":"EUR/USD","type":"europe_indices","currency":"","source":"twelvedata"},
+            {"symbol":"OANDA:EUR_GBP","name":"EUR/GBP","type":"europe_indices","currency":"","source":"twelvedata"},
         ],
         "asia_indices": [
-            {"symbol":"^N225","name":"Nikkei 225 (Japan)","type":"asia_indices","currency":"JPY"},
-            {"symbol":"^HSI","name":"Hang Seng (HK)","type":"asia_indices","currency":"HKD"},
-            {"symbol":"000001.SS","name":"Shanghai Composite","type":"asia_indices","currency":"CNY"},
-            {"symbol":"^AXJO","name":"ASX 200 (Australia)","type":"asia_indices","currency":"AUD"},
-            {"symbol":"^KS11","name":"KOSPI (South Korea)","type":"asia_indices","currency":"KRW"},
-            {"symbol":"^TWII","name":"Taiwan Weighted","type":"asia_indices","currency":"TWD"},
-            {"symbol":"^STI","name":"STI (Singapore)","type":"asia_indices","currency":"SGD"},
-            {"symbol":"OANDA:USD_JPY","name":"USD/JPY","type":"asia_indices","currency":""},
+            {"symbol":"^N225","name":"Nikkei 225 (Japan)","type":"asia_indices","currency":"JPY","source":"twelvedata"},
+            {"symbol":"^HSI","name":"Hang Seng (HK)","type":"asia_indices","currency":"HKD","source":"twelvedata"},
+            {"symbol":"^AXJO","name":"ASX 200 (Australia)","type":"asia_indices","currency":"AUD","source":"twelvedata"},
+            {"symbol":"^KS11","name":"KOSPI (S. Korea)","type":"asia_indices","currency":"KRW","source":"twelvedata"},
+            {"symbol":"OANDA:USD_JPY","name":"USD/JPY","type":"asia_indices","currency":"","source":"twelvedata"},
+            {"symbol":"OANDA:USD_CNH","name":"USD/CNH","type":"asia_indices","currency":"","source":"twelvedata"},
         ],
         "crypto": [
             {"symbol":"BINANCE:BTCUSDT","name":"Bitcoin","type":"crypto","currency":"USD"},
@@ -1611,17 +1719,39 @@ def api_market_indices():
             {"symbol":"BINANCE:DOGEUSDT","name":"Dogecoin","type":"crypto","currency":"USD"},
         ],
         "commodities": [
-            {"symbol":"OANDA:XAU_USD","name":"Gold","type":"commodities","currency":"USD"},
-            {"symbol":"OANDA:XAG_USD","name":"Silver","type":"commodities","currency":"USD"},
-            {"symbol":"OANDA:USOIL","name":"Crude Oil (WTI)","type":"commodities","currency":"USD"},
-            {"symbol":"OANDA:BRENT_USD","name":"Brent Crude","type":"commodities","currency":"USD"},
-            {"symbol":"OANDA:NATGAS_USD","name":"Natural Gas","type":"commodities","currency":"USD"},
-            {"symbol":"OANDA:XPT_USD","name":"Platinum","type":"commodities","currency":"USD"},
+            {"symbol":"OANDA:XAU_USD","name":"Gold","type":"commodities","currency":"USD","source":"twelvedata"},
+            {"symbol":"OANDA:XAG_USD","name":"Silver","type":"commodities","currency":"USD","source":"twelvedata"},
+            {"symbol":"OANDA:USOIL","name":"Crude Oil (WTI)","type":"commodities","currency":"USD","source":"twelvedata"},
+            {"symbol":"OANDA:BRENT_USD","name":"Brent Crude","type":"commodities","currency":"USD","source":"twelvedata"},
+            {"symbol":"OANDA:NATGAS_USD","name":"Natural Gas","type":"commodities","currency":"USD","source":"twelvedata"},
+            {"symbol":"OANDA:XAU_USD","name":"Gold/USD","type":"commodities","currency":"USD","source":"twelvedata"},
+            {"symbol":"GLD","name":"Gold ETF","type":"commodities","currency":"USD","source":"finnhub"},
+            {"symbol":"USO","name":"Oil ETF","type":"commodities","currency":"USD","source":"finnhub"},
+            {"symbol":"SLV","name":"Silver ETF","type":"commodities","currency":"USD","source":"finnhub"},
         ],
     }
 
+    def fetch_quote_td_index(sym, name, item):
+        """Fetch index from Twelve Data"""
+        try:
+            data = td("quote", {"symbol": sym})
+            if data and data.get("close"):
+                price = float(data.get("close",0))
+                change = float(data.get("change",0))
+                pct = float(data.get("percent_change",0))
+                return {**item,"price":round(price,2),"change":round(change,2),"changePct":round(pct,2)}
+        except Exception as e:
+            print(f"TD index error {sym}: {e}")
+        return {**item,"price":None,"change":0,"changePct":0}
+
     def fetch_quote(item):
         sym = item["symbol"]
+        source = item.get("source","finnhub")
+        # Use Twelve Data for indices (^ symbols and OANDA forex)
+        if source == "twelvedata" or sym.startswith("^") or "OANDA" in sym:
+            # Map to TD symbol format
+            td_sym = sym.replace("^","").replace("OANDA:","").replace("_","/")
+            return fetch_quote_td_index(td_sym, item["name"], item)
         try:
             q = fh("quote", {"symbol": sym})
             if q and q.get("c") and q.get("c") > 0:
@@ -1631,7 +1761,7 @@ def api_market_indices():
                     "changePct": round(q.get("dp",0), 2),
                 }
         except Exception as e:
-            print(f"fetch_quote error for {sym}: {e}")
+            print(f"fetch_quote error {sym}: {e}")
         return {**item,"price":None,"change":0,"changePct":0}
 
     result = {"us_indices":[],"uk_indices":[],"india_indices":[],"europe_indices":[],"asia_indices":[],"crypto":[],"commodities":[]}
@@ -1678,6 +1808,9 @@ def api_indicators_batch():
                 except: pass
     except Exception as e:
         print(f"Batch error: {e}")
+    # Cache result
+    _market_cache["data"] = result
+    _market_cache["ts"] = time.time()
     return jsonify(result)
 
 @app.route('/api/cache/status')
