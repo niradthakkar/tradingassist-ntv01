@@ -1947,13 +1947,6 @@ def api_portfolio_quick():
         return jsonify({**_portfolio_cache[cache_key]['data'], "cached": True})
     return jsonify({"accounts": [], "summaries": [], "cached": False})
 
-@app.route('/api/indicators/<sym>')
-@require_login
-def api_indicators(sym):
-    """Get indicators for a single symbol"""
-    ind = get_indicators(sym)
-    return jsonify(ind)
-
 @app.route('/api/indicators/batch', methods=['POST'])
 @require_login
 def api_indicators_batch():
