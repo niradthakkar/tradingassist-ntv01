@@ -184,7 +184,7 @@ TWELVE_KEY     = os.environ.get('TWELVE_DATA_KEY', '')
 SECTOR_MAP = {
     'INTC':'Technology','AVGO':'Technology','QCOM':'Technology','ASML':'Technology',
     'APP':'Technology','NVDA':'Technology','AMD':'Technology','MSFT':'Technology',
-    'AAPL':'Technology','SOUN':'AI','QUBT':'AI','DMYI':'AI','PLTR':'AI',
+    'AAPL':'Technology','SOUN':'AI','QUBT':'AI','DMYI':'SPAC','PLTR':'AI',
     'ARM':'Technology','SEMI':'Technology','SOXL':'Technology','TSM':'Technology',
     'SMCI':'Technology','RIOT':'Crypto','BITF':'Crypto','BULL':'Crypto',
     'IREN':'Energy/AI','APLD':'Energy/AI','XE':'Energy','RR':'Energy',
@@ -513,6 +513,8 @@ _profile_cache  = {}
 _quote_cache    = {}
 _earnings_cache = {}
 _portfolio_cache = {}  # username -> {data, ts}
+_market_cache    = {}  # market data cache
+_news_cache      = {}  # symbol -> list of news items
 
 CANDLE_TTL   = 3600
 IND_TTL      = 3600
@@ -1794,6 +1796,7 @@ def save_user_watchlist():
     return jsonify({'success': True})
 
 _market_cache = {}   # market data cache
+_news_cache   = {}   # symbol -> list of news items
 MARKET_TTL = 300     # 5 minutes - cached aggressively
 
 @app.route('/api/market/indices')
