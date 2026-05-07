@@ -858,11 +858,16 @@ def basic_holding(h, account_label):
     # Account-level currency override (for future US/India brokers)
     broker = account_label  # will be used when we add broker type
 
+    # Get day change from quote cache
+    q = _quote_cache.get(ind_sym, {})
+    day_change_pct = q.get("dp", 0) or 0
+
     return {**h_copy,
         "symbol":symbol,"name":_profile_cache.get(symbol,{}).get("name","") or NAME_MAP.get(symbol,""),
         "sector":sector,"portfolioValue":portfolio_value,
-        "currency":display_currency,   # for avg/current price display
-        "portfolioCurrency":"GBP",     # always GBP for total holding + P&L
+        "currency":display_currency,
+        "portfolioCurrency":"GBP",
+        "dayChangePct":round(day_change_pct,2),
         "isUkEtp":is_uk_etp,"account":account_label,"leverage":leverage,
         "indSymbol":ind_sym,"indicators":{},"signal":"Loading...","news":{},
     }
@@ -1259,6 +1264,22 @@ def api_news(symbol):
     combined.sort(key=lambda x: x.get("datetime",0), reverse=True)
     return jsonify(combined[:20])
 
+@app.route('/api/earnings/news/<symbol>')
+@require_login
+def api_earnings_news(symbol):
+    """Get fresh news for a specific earnings stock"""
+    if symbol in _news_cache:
+        return jsonify(_news_cache[symbol])
+    today=datetime.now().strftime("%Y-%m-%d")
+    week_ago=(datetime.now()-timedelta(days=7)).strftime("%Y-%m-%d")
+    month_ago=(datetime.now()-timedelta(days=30)).strftime("%Y-%m-%d")
+    news=fh("company-news",{"symbol":symbol,"from":week_ago,"to":today})
+    if not news or len(news)<2:
+        news=fh("company-news",{"symbol":symbol,"from":month_ago,"to":today})
+    result = news[:10] if isinstance(news,list) else []
+    _news_cache[symbol] = result
+    return jsonify(result)
+
 @app.route('/api/news/market/<category>')
 @require_login
 def api_market_news(category):
@@ -1306,16 +1327,22 @@ def api_earnings():
         if price>0 and price<5 and not in_p: return None
         ea=item.get("epsActual"); ee=item.get("epsEstimate")
         ra=item.get("revenueActual"); re_=item.get("revenueEstimate")
+        # Get top news headline from cache (no extra API call)
+        news_item = None
+        if sym in _news_cache:
+            nl = _news_cache[sym]
+            if nl: news_item = {"headline": nl[0].get("headline",""), "url": nl[0].get("url",""), "datetime": nl[0].get("datetime",0)}
         return {**item,"companyName":name,"currentPrice":price if price else None,
                 "priceChange":q.get("d"),"priceChangePct":q.get("dp"),"inPortfolio":in_p,"marketCap":mcap,
                 "epsVerdict":get_eps_verdict(ea,ee),"revVerdict":get_rev_verdict(ra,re_),
                 "epsSurprisePct":round(((ea-ee)/abs(ee))*100,1) if ea is not None and ee else None,
-                "revSurprisePct":round(((ra-re_)/abs(re_))*100,1) if ra is not None and re_ else None}
+                "revSurprisePct":round(((ra-re_)/abs(re_))*100,1) if ra is not None and re_ else None,
+                "latestNews": news_item}
     def sort_upcoming(items):
+        """Sort by date ascending - earliest earnings first"""
         enriched=[e for e in [enrich(i) for i in items] if e is not None]
-        portfolio=sorted([e for e in enriched if e["inPortfolio"]],key=lambda x:(x.get("date",""),-x["marketCap"]))
-        others=sorted([e for e in enriched if not e["inPortfolio"]],key=lambda x:(x.get("date",""),-x["marketCap"]))
-        return (portfolio+others)[:50]
+        enriched.sort(key=lambda x: (x.get("date","9999-99-99"), -x["marketCap"]))
+        return enriched[:50]
     def sort_past(items):
         enriched=[e for e in [enrich(i) for i in items] if e is not None]
         portfolio=sorted([e for e in enriched if e["inPortfolio"]],key=lambda x: x.get("date",""),reverse=True)
@@ -1324,6 +1351,23 @@ def api_earnings():
     result={"upcoming":sort_upcoming(upcoming_data.get("earningsCalendar") or []),
             "past":sort_past(past_data.get("earningsCalendar") or [])}
     _earnings_cache["entry"]={"data":result,"ts":time.time()}
+
+    # Background: pre-fetch quotes AND news for all earnings stocks
+    def prefetch_earnings_data():
+        all_syms=list({e["symbol"] for e in result["upcoming"]+result["past"]})[:30]
+        for sym in all_syms:
+            try:
+                if not cache_valid(_quote_cache.get(sym), QUOTE_TTL):
+                    get_quote(sym); time.sleep(0.2)
+                if sym not in _news_cache:
+                    today=datetime.now().strftime("%Y-%m-%d")
+                    week_ago=(datetime.now()-timedelta(days=7)).strftime("%Y-%m-%d")
+                    news=fh("company-news",{"symbol":sym,"from":week_ago,"to":today})
+                    _news_cache[sym]=news[:5] if isinstance(news,list) else []
+                    time.sleep(0.3)
+            except: pass
+    threading.Thread(target=prefetch_earnings_data, daemon=True).start()
+
     return jsonify(result)
 
 @app.route('/api/suggestions')
@@ -1334,8 +1378,7 @@ def api_suggestions():
         sym = s["ticker"]
         q = get_quote(sym)
         ind = _ind_cache.get(sym, {})
-        if not ind:
-            ind = {}
+        if not ind: ind = {}
         if q.get("c"):
             s["currentPrice"] = round(q["c"], 2)
             s["dayChange"] = round(q.get("dp", 0), 2)
@@ -1343,11 +1386,20 @@ def api_suggestions():
             s["liveSignal"] = ind["signal"]
         if q.get("dp") is not None:
             s["perf"]["1d"] = round(q.get("dp", 0), 1)
-        # Add live RSI context to reason
+        # Dynamic reason based on live data
+        live_notes = []
         if ind.get("rsi"):
             rsi = ind["rsi"]
-            if rsi < 30: s["reason"] += f" RSI oversold ({rsi:.0f}) — potential bounce."
-            elif rsi > 70: s["reason"] += f" RSI overbought ({rsi:.0f}) — watch for pullback."
+            if rsi < 30: live_notes.append(f"RSI oversold at {rsi:.0f}")
+            elif rsi > 70: live_notes.append(f"RSI overbought at {rsi:.0f}")
+        if ind.get("macd") and ind.get("macd_signal"):
+            if ind["macd"] > ind["macd_signal"]: live_notes.append("MACD bullish")
+            else: live_notes.append("MACD bearish")
+        if ind.get("ma50") and ind.get("ma200"):
+            if ind["ma50"] > ind["ma200"]: live_notes.append("Golden Cross active")
+            else: live_notes.append("Death Cross active")
+        if live_notes:
+            s["liveNote"] = " | ".join(live_notes)
         return s
 
     suggestions = {
@@ -1422,6 +1474,110 @@ def save_user_watchlist():
         users[username]['watchlist'] = wl
         save_users(users)
     return jsonify({'success': True})
+
+@app.route('/api/market/indices')
+@require_login
+def api_market_indices():
+    """Fetch major market indices, commodities, crypto"""
+    import concurrent.futures
+
+    # Market symbols - comprehensive like Yahoo Finance
+    symbols = {
+        "us_indices": [
+            {"symbol":"^GSPC","name":"S&P 500","type":"us_indices","currency":"USD"},
+            {"symbol":"^IXIC","name":"NASDAQ","type":"us_indices","currency":"USD"},
+            {"symbol":"^DJI","name":"Dow Jones","type":"us_indices","currency":"USD"},
+            {"symbol":"^RUT","name":"Russell 2000","type":"us_indices","currency":"USD"},
+            {"symbol":"^VIX","name":"VIX Fear Index","type":"us_indices","currency":""},
+        ],
+        "uk_indices": [
+            {"symbol":"^FTSE","name":"FTSE 100","type":"uk_indices","currency":"GBP"},
+            {"symbol":"^FTMC","name":"FTSE 250","type":"uk_indices","currency":"GBP"},
+            {"symbol":"^FTAI","name":"FTSE AIM All-Share","type":"uk_indices","currency":"GBP"},
+            {"symbol":"OANDA:GBP_USD","name":"GBP/USD","type":"uk_indices","currency":""},
+            {"symbol":"OANDA:GBP_EUR","name":"GBP/EUR","type":"uk_indices","currency":""},
+        ],
+        "india_indices": [
+            {"symbol":"^BSESN","name":"BSE SENSEX","type":"india_indices","currency":"INR"},
+            {"symbol":"^NSEI","name":"NSE Nifty 50","type":"india_indices","currency":"INR"},
+            {"symbol":"^NSEBANK","name":"Nifty Bank","type":"india_indices","currency":"INR"},
+            {"symbol":"^CNXIT","name":"Nifty IT","type":"india_indices","currency":"INR"},
+            {"symbol":"OANDA:USD_INR","name":"USD/INR","type":"india_indices","currency":""},
+            {"symbol":"OANDA:GBP_INR","name":"GBP/INR","type":"india_indices","currency":""},
+        ],
+        "europe_indices": [
+            {"symbol":"^STOXX50E","name":"Euro Stoxx 50","type":"europe_indices","currency":"EUR"},
+            {"symbol":"^GDAXI","name":"DAX (Germany)","type":"europe_indices","currency":"EUR"},
+            {"symbol":"^FCHI","name":"CAC 40 (France)","type":"europe_indices","currency":"EUR"},
+            {"symbol":"^IBEX","name":"IBEX 35 (Spain)","type":"europe_indices","currency":"EUR"},
+            {"symbol":"^AEX","name":"AEX (Netherlands)","type":"europe_indices","currency":"EUR"},
+            {"symbol":"^SSMI","name":"SMI (Switzerland)","type":"europe_indices","currency":"CHF"},
+            {"symbol":"^OMX","name":"OMX (Sweden)","type":"europe_indices","currency":"SEK"},
+            {"symbol":"OANDA:EUR_USD","name":"EUR/USD","type":"europe_indices","currency":""},
+        ],
+        "asia_indices": [
+            {"symbol":"^N225","name":"Nikkei 225 (Japan)","type":"asia_indices","currency":"JPY"},
+            {"symbol":"^HSI","name":"Hang Seng (HK)","type":"asia_indices","currency":"HKD"},
+            {"symbol":"000001.SS","name":"Shanghai Composite","type":"asia_indices","currency":"CNY"},
+            {"symbol":"^AXJO","name":"ASX 200 (Australia)","type":"asia_indices","currency":"AUD"},
+            {"symbol":"^KS11","name":"KOSPI (South Korea)","type":"asia_indices","currency":"KRW"},
+            {"symbol":"^TWII","name":"Taiwan Weighted","type":"asia_indices","currency":"TWD"},
+            {"symbol":"^STI","name":"STI (Singapore)","type":"asia_indices","currency":"SGD"},
+            {"symbol":"OANDA:USD_JPY","name":"USD/JPY","type":"asia_indices","currency":""},
+        ],
+        "crypto": [
+            {"symbol":"BINANCE:BTCUSDT","name":"Bitcoin","type":"crypto","currency":"USD"},
+            {"symbol":"BINANCE:ETHUSDT","name":"Ethereum","type":"crypto","currency":"USD"},
+            {"symbol":"BINANCE:BNBUSDT","name":"BNB","type":"crypto","currency":"USD"},
+            {"symbol":"BINANCE:SOLUSDT","name":"Solana","type":"crypto","currency":"USD"},
+            {"symbol":"BINANCE:XRPUSDT","name":"XRP","type":"crypto","currency":"USD"},
+            {"symbol":"BINANCE:ADAUSDT","name":"Cardano","type":"crypto","currency":"USD"},
+            {"symbol":"BINANCE:DOGEUSDT","name":"Dogecoin","type":"crypto","currency":"USD"},
+        ],
+        "commodities": [
+            {"symbol":"OANDA:XAU_USD","name":"Gold","type":"commodities","currency":"USD"},
+            {"symbol":"OANDA:XAG_USD","name":"Silver","type":"commodities","currency":"USD"},
+            {"symbol":"OANDA:USOIL","name":"Crude Oil (WTI)","type":"commodities","currency":"USD"},
+            {"symbol":"OANDA:BRENT_USD","name":"Brent Crude","type":"commodities","currency":"USD"},
+            {"symbol":"OANDA:NATGAS_USD","name":"Natural Gas","type":"commodities","currency":"USD"},
+            {"symbol":"OANDA:XPT_USD","name":"Platinum","type":"commodities","currency":"USD"},
+        ],
+    }
+
+    def fetch_quote(item):
+        sym = item["symbol"]
+        q = fh("quote", {"symbol": sym})
+        if q and q.get("c"):
+            return {**item,
+                "price": round(q.get("c",0), 2),
+                "change": round(q.get("d",0), 2),
+                "changePct": round(q.get("dp",0), 2),
+                "high": round(q.get("h",0), 2),
+                "low": round(q.get("l",0), 2),
+            }
+        # Try Twelve Data as fallback
+        if TWELVE_KEY:
+            td_q = td("price", {"symbol": sym.replace("^","").replace("BINANCE:","").replace("OANDA:","")})
+            if td_q.get("price"):
+                return {**item,"price":round(float(td_q["price"]),2),"change":0,"changePct":0}
+        return {**item,"price":None,"change":0,"changePct":0}
+
+    result = {"us_indices":[],"uk_indices":[],"india_indices":[],"europe_indices":[],"asia_indices":[],"crypto":[],"commodities":[]}
+    try:
+        all_items = []
+        for group in symbols.values(): all_items.extend(group)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            futures = {ex.submit(fetch_quote, item): item for item in all_items}
+            for f_done in concurrent.futures.as_completed(futures, timeout=20):
+                try:
+                    item = f_done.result()
+                    t = item["type"]
+                    if t in result: result[t].append(item)
+                except: pass
+    except Exception as e:
+        print(f"Market indices error: {e}")
+
+    return jsonify(result)
 
 @app.route('/api/cache/status')
 @require_login
