@@ -500,7 +500,7 @@ CANDLE_TTL   = 3600
 IND_TTL      = 3600
 PROFILE_TTL  = 86400
 QUOTE_TTL    = 300
-EARNINGS_TTL = 3600
+EARNINGS_TTL = 1800   # 30 mins
 PORTFOLIO_TTL = 120   # 2 minutes
 
 def cache_valid(entry, ttl):
@@ -745,16 +745,33 @@ def get_candles(symbol):
     _candle_cache[symbol]=entry
     return entry
 
+# Symbols that work better with Twelve Data than Finnhub
+TD_PREFERRED = {
+    'GLD','SLV','GDX','SPY','QQQ','IWM','TLT','LQD','HYG',
+    'XLF','XLE','XLK','XLV','XLU','XLI','XLP','XLB','XLRE',
+    'SOXX','SMH','ARKK','ARKG','ARKW','ARKF',
+    'VXX','UVXY','SQQQ','TQQQ','SOXS','SOXL',
+    'OIL','USO','UNG','DBO','IAU','SGOL',
+    'EEM','EFA','VWO','VEA','IEMG',
+}
+
 def get_indicators(symbol):
     if cache_valid(_ind_cache.get(symbol), IND_TTL):
         return _ind_cache[symbol]
-    candles=get_candles(symbol); closes=candles["closes"]
-    if len(closes)<30:
-        # Fallback to Twelve Data for indicators
-        print(f"Not enough candles for {symbol} - trying Twelve Data indicators")
+
+    # Use Twelve Data directly for ETFs and commodities
+    if symbol in TD_PREFERRED and TWELVE_KEY:
         td_ind = get_indicators_td(symbol)
         if td_ind.get("rsi"):
             _ind_cache[symbol]=td_ind; return td_ind
+
+    candles=get_candles(symbol); closes=candles["closes"]
+    if len(closes)<30:
+        # Try Twelve Data as fallback
+        if TWELVE_KEY:
+            td_ind = get_indicators_td(symbol)
+            if td_ind.get("rsi"):
+                _ind_cache[symbol]=td_ind; return td_ind
         entry={"rsi":None,"macd":None,"macd_signal":None,"macd_hist":None,
                "bb_upper":None,"bb_middle":None,"bb_lower":None,
                "ma50":None,"ma200":None,"signal":"Neutral","ts":time.time()}
@@ -800,11 +817,15 @@ def background_prefetch():
         for sym in syms:
             try:
                 if not cache_valid(_ind_cache.get(sym), IND_TTL):
-                    get_indicators(sym); time.sleep(1.2)
+                    get_indicators(sym)
+                    # Slower for Finnhub, faster for TD
+                    time.sleep(0.8 if sym in TD_PREFERRED else 1.2)
                 if not cache_valid(_profile_cache.get(sym), PROFILE_TTL):
-                    get_profile(sym); time.sleep(0.5)
+                    get_profile(sym); time.sleep(0.4)
+                if not cache_valid(_quote_cache.get(sym), QUOTE_TTL):
+                    get_quote(sym); time.sleep(0.3)
             except Exception as e: print(f"BG error {sym}: {e}")
-        time.sleep(30)
+        time.sleep(20)
 
 threading.Thread(target=background_prefetch, daemon=True).start()
 
@@ -836,7 +857,11 @@ def basic_holding(h, account_label):
     else:
         current_price_gbp=h.get("currentPrice",0) or 0
         avg_price_gbp=avg
-        portfolio_value=round((qty*avg)+ppl,2)
+        # Use currentPrice * qty for total holding (most accurate)
+        if current_price_gbp and qty:
+            portfolio_value=round(current_price_gbp*qty,2)
+        else:
+            portfolio_value=round((qty*avg)+ppl,2)
     h_copy=dict(h)
     if is_uk_etp:
         h_copy["currentPrice"]=round(current_price_gbp,4)
@@ -1210,10 +1235,34 @@ def api_summary():
         inv=(s.get('investments',{}) or {})
         total_unrealised+=inv.get('unrealizedProfitLoss',0) or 0
         total_realised+=inv.get('realizedProfitLoss',0) or 0
+    # Calculate day change across all holdings
+    all_holdings_flat = []
+    for acct in portfolio.get('accounts',[]):
+        all_holdings_flat.extend(acct.get('holdings',[]))
+    
+    total_day_change = 0
+    total_day_change_pct = 0
+    holdings_with_change = 0
+    for holding in all_holdings_flat:
+        sym = holding.get('indSymbol') or holding.get('symbol','')
+        q = _quote_cache.get(sym, {})
+        if q.get('dp') and holding.get('portfolioValue'):
+            day_chg = holding['portfolioValue'] * q['dp'] / 100
+            total_day_change += day_chg
+            holdings_with_change += 1
+    if total_value and holdings_with_change:
+        total_day_change_pct = round(total_day_change / total_value * 100, 2)
+
     return jsonify({
         'accounts':portfolio.get('summaries',[]),
-        'combined':{'totalValue':round(total_value,2),'availableCash':round(total_cash,2),
-                    'unrealizedPnL':round(total_unrealised,2),'realizedPnL':round(total_realised,2)}
+        'combined':{
+            'totalValue':round(total_value,2),
+            'availableCash':round(total_cash,2),
+            'dayChange':round(total_day_change,2),
+            'dayChangePct':round(total_day_change_pct,2),
+            'unrealizedPnL':round(total_unrealised,2),
+            'realizedPnL':round(total_realised,2)
+        }
     })
 
 @app.route('/api/indicators/<symbol>')
@@ -1239,28 +1288,55 @@ def api_profile(symbol):
     p=get_profile(symbol)
     return jsonify({"name":p.get("name",""),"industry":p.get("industry","")})
 
+def get_yahoo_news(symbol):
+    """Fetch news from Yahoo Finance RSS feed"""
+    try:
+        url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=US&lang=en-US"
+        r = requests.get(url, timeout=10, headers={"User-Agent":"Mozilla/5.0"})
+        if r.status_code != 200: return []
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(r.text)
+        items = []
+        for item in root.findall(".//item")[:10]:
+            title = item.findtext("title","")
+            link  = item.findtext("link","")
+            desc  = item.findtext("description","")
+            pub   = item.findtext("pubDate","")
+            try:
+                from email.utils import parsedate_to_datetime
+                dt = int(parsedate_to_datetime(pub).timestamp()) if pub else 0
+            except: dt = 0
+            if title:
+                items.append({"headline":title,"summary":desc[:300],"url":link,"source":"Yahoo Finance","datetime":dt})
+        return items
+    except Exception as e:
+        print(f"Yahoo news error for {symbol}: {e}")
+        return []
+
 @app.route('/api/news/<symbol>')
 @require_login
 def api_news(symbol):
     today=datetime.now().strftime("%Y-%m-%d")
     week_ago=(datetime.now()-timedelta(days=7)).strftime("%Y-%m-%d")
     month_ago=(datetime.now()-timedelta(days=30)).strftime("%Y-%m-%d")
-    # Fetch from Finnhub
-    news=fh("company-news",{"symbol":symbol,"from":week_ago,"to":today})
-    if not news or len(news)<3:
-        news=fh("company-news",{"symbol":symbol,"from":month_ago,"to":today})
-    fh_news = news if isinstance(news,list) else []
-    # Also fetch from Twelve Data and merge
-    td_news = get_news_td(symbol)
-    # Merge and deduplicate by headline
-    seen = set()
-    combined = []
-    for n in (fh_news + td_news):
-        h = (n.get("headline") or n.get("title",""))[:50]
-        if h and h not in seen:
-            seen.add(h)
-            combined.append(n)
-    # Sort by datetime descending
+    import concurrent.futures
+    def get_fh_news():
+        news=fh("company-news",{"symbol":symbol,"from":week_ago,"to":today})
+        if not news or len(news)<3:
+            news=fh("company-news",{"symbol":symbol,"from":month_ago,"to":today})
+        return news if isinstance(news,list) else []
+    def get_td_news(): return get_news_td(symbol)
+    def get_yf_news(): return get_yahoo_news(symbol)
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+            f1=ex.submit(get_fh_news); f2=ex.submit(get_td_news); f3=ex.submit(get_yf_news)
+            fh_news=f1.result(timeout=10); td_news=f2.result(timeout=10); yf_news=f3.result(timeout=10)
+    except: fh_news=[]; td_news=[]; yf_news=[]
+    seen=set(); combined=[]
+    for n in (fh_news+td_news+yf_news):
+        headline=(n.get("headline") or n.get("title",""))[:60]
+        if headline and headline not in seen:
+            seen.add(headline); combined.append(n)
     combined.sort(key=lambda x: x.get("datetime",0), reverse=True)
     return jsonify(combined[:20])
 
@@ -1546,20 +1622,16 @@ def api_market_indices():
 
     def fetch_quote(item):
         sym = item["symbol"]
-        q = fh("quote", {"symbol": sym})
-        if q and q.get("c"):
-            return {**item,
-                "price": round(q.get("c",0), 2),
-                "change": round(q.get("d",0), 2),
-                "changePct": round(q.get("dp",0), 2),
-                "high": round(q.get("h",0), 2),
-                "low": round(q.get("l",0), 2),
-            }
-        # Try Twelve Data as fallback
-        if TWELVE_KEY:
-            td_q = td("price", {"symbol": sym.replace("^","").replace("BINANCE:","").replace("OANDA:","")})
-            if td_q.get("price"):
-                return {**item,"price":round(float(td_q["price"]),2),"change":0,"changePct":0}
+        try:
+            q = fh("quote", {"symbol": sym})
+            if q and q.get("c") and q.get("c") > 0:
+                return {**item,
+                    "price": round(q.get("c",0), 2),
+                    "change": round(q.get("d",0), 2),
+                    "changePct": round(q.get("dp",0), 2),
+                }
+        except Exception as e:
+            print(f"fetch_quote error for {sym}: {e}")
         return {**item,"price":None,"change":0,"changePct":0}
 
     result = {"us_indices":[],"uk_indices":[],"india_indices":[],"europe_indices":[],"asia_indices":[],"crypto":[],"commodities":[]}
@@ -1577,6 +1649,35 @@ def api_market_indices():
     except Exception as e:
         print(f"Market indices error: {e}")
 
+    return jsonify(result)
+
+@app.route('/api/indicators/batch', methods=['POST'])
+@require_login
+def api_indicators_batch():
+    """Fetch indicators for multiple symbols in parallel"""
+    data = request.json or {}
+    symbols = data.get('symbols', [])[:50]  # max 50
+    if not symbols:
+        return jsonify({})
+    import concurrent.futures
+    result = {}
+    def fetch_one(sym):
+        try:
+            ind = get_indicators(sym)
+            return sym, ind
+        except Exception as e:
+            print(f"Batch indicator error {sym}: {e}")
+            return sym, {}
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+            futures = {ex.submit(fetch_one, sym): sym for sym in symbols}
+            for f in concurrent.futures.as_completed(futures, timeout=30):
+                try:
+                    sym, ind = f.result()
+                    result[sym] = ind
+                except: pass
+    except Exception as e:
+        print(f"Batch error: {e}")
     return jsonify(result)
 
 @app.route('/api/cache/status')

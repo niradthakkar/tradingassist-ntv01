@@ -79,7 +79,8 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.015
 .pill{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:500;white-space:nowrap}
 .p-sb{background:rgba(34,197,94,.15);color:var(--green2)}.p-b{background:rgba(34,197,94,.08);color:var(--green)}.p-n{background:var(--bg3);color:var(--text2)}.p-br{background:rgba(239,68,68,.08);color:var(--red)}.p-sbr{background:rgba(239,68,68,.15);color:var(--red2)}.p-ld{background:var(--bg3);color:var(--text3);font-style:italic}
 .ibox{display:flex;gap:3px;flex-wrap:wrap}
-.itag{font-size:10px;padding:2px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;white-space:nowrap;background:var(--bg3);color:var(--text2)}
+.itag{font-size:10px;padding:2px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;white-space:nowrap;background:var(--bg3);color:var(--text2);cursor:help;position:relative}
+.itag[title]:hover::after{content:attr(title);position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);background:#1a2236;color:#dce6f0;padding:7px 10px;border-radius:6px;font-size:11px;white-space:normal;width:210px;z-index:9999;border:1px solid #253550;line-height:1.5;text-align:left;pointer-events:none;font-family:'Inter',sans-serif;font-weight:400}
 .itag.ob{background:var(--rbg);color:var(--red2)}.itag.os{background:var(--gbg);color:var(--green2)}.itag.mb{background:var(--gbg);color:var(--green)}.itag.mr{background:var(--rbg);color:var(--red)}.itag.gc{background:var(--gbg);color:var(--green)}.itag.dc{background:var(--rbg);color:var(--red)}
 .nhl{font-size:11px;color:var(--text2);max-width:175px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}.nhl:hover{color:var(--accent2)}
 .nmore{background:none;border:none;color:var(--accent);font-size:10px;cursor:pointer;padding:1px 4px;border-radius:3px;display:block;margin-top:2px}
@@ -601,7 +602,58 @@ function renderNewsInline(news,sym){if(news===undefined) return '<span class="nl
 function riskBadge(r){var m={'Low':'rl','Medium':'rm','High':'rh','Very High':'rvh'};return '<span class="risk '+(m[r]||'rm')+'">'+r+' Risk</span>';}
 
 // ── FETCH QUEUE ───────────────────────────────────────────────────────
-function fetchIndicators(sym,displaySym){displaySym=displaySym||sym;if(S.indCache[sym]){updateCells(displaySym);return Promise.resolve(S.indCache[sym]);}return api('/api/indicators/'+sym).then(function(ind){S.indCache[sym]=ind;sessionStorage.setItem('indCache',JSON.stringify(S.indCache));updateCells(displaySym);return ind;}).catch(function(){return{};});}
+function fetchIndicators(sym,displaySym){
+  displaySym=displaySym||sym;
+  if(S.indCache[sym]){updateCells(displaySym);return Promise.resolve(S.indCache[sym]);}
+  return api('/api/indicators/'+sym).then(function(ind){
+    S.indCache[sym]=ind;
+    sessionStorage.setItem('indCache',JSON.stringify(S.indCache));
+    updateCells(displaySym);
+    return ind;
+  }).catch(function(){return{};});
+}
+
+function fetchAllIndicatorsBatch(syms, indSyms){
+  // Filter only uncached symbols
+  var toFetch=[];
+  var symMap={};
+  syms.forEach(function(s,i){
+    var is=indSyms?indSyms[i]:s;
+    if(!S.indCache[is]){
+      toFetch.push(is);
+      symMap[is]=s; // map indSym -> displaySym
+    }
+  });
+  if(!toFetch.length) return Promise.resolve({});
+
+  // Fetch in batches of 20
+  var batches=[];
+  for(var i=0;i<toFetch.length;i+=20){
+    batches.push(toFetch.slice(i,i+20));
+  }
+
+  var chain=Promise.resolve();
+  batches.forEach(function(batch){
+    chain=chain.then(function(){
+      return fetch('/api/indicators/batch',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({symbols:batch})
+      }).then(function(r){
+        if(r.status===401){showAuth();throw new Error('Not authenticated');}
+        return r.json();
+      }).then(function(results){
+        Object.keys(results).forEach(function(sym){
+          S.indCache[sym]=results[sym];
+          var displaySym=symMap[sym]||sym;
+          updateCells(displaySym);
+        });
+        sessionStorage.setItem('indCache',JSON.stringify(S.indCache));
+      }).catch(function(e){console.error('Batch indicators error:',e);});
+    });
+  });
+  return chain;
+}
 function fetchNewsItem(sym){if(S.newsCache[sym]!==undefined) return Promise.resolve(S.newsCache[sym]);return api('/api/news/'+sym).then(function(news){var top=null;if(news&&news.length) top={headline:news[0].headline||'',source:news[0].source||'',url:news[0].url||'',datetime:news[0].datetime||0,summary:(news[0].summary||'').substring(0,300)};S.newsCache[sym]=top;sessionStorage.setItem('newsCache',JSON.stringify(S.newsCache));updateCells(sym);return top;}).catch(function(){return null;});}
 function fetchName(sym){
   if(NC[sym]!==undefined) return Promise.resolve(NC[sym]);
@@ -645,12 +697,26 @@ function drawSparklines(){
 function updateCells(sym){var ind=S.indCache[sym];var news=S.newsCache[sym];document.querySelectorAll('[data-symbol="'+sym+'"]').forEach(function(row){var sc=row.querySelector('.sig-cell');var ic=row.querySelector('.ind-cell');var nc=row.querySelector('.news-cell');if(sc&&ind) sc.innerHTML=signalPill(ind.signal||'Neutral');if(ic&&ind) ic.innerHTML='<div class="ibox">'+renderInds(ind)+'</div>';if(nc&&news!==undefined) nc.innerHTML=renderNewsInline(news,sym);});}
 var fQ=[],fing=false;
 function queueFetch(syms,indSyms){
+  // Use batch fetching for initial load - much faster
+  fetchAllIndicatorsBatch(syms, indSyms);
+  // Also queue news fetching individually (staggered)
   syms.forEach(function(s,i){
-    var is=indSyms?indSyms[i]:s;
     var already=fQ.some(function(item){return (typeof item==='string'?item:item.sym)===s;});
-    if(!already) fQ.push({sym:s,indSym:is||s});
+    if(!already) fQ.push({sym:s,indSym:indSyms?indSyms[i]:s});
   });
-  if(!fing) procFQ();
+  if(!fing) procFQNews();
+}
+
+// procFQ only handles news now - indicators handled by batch
+function procFQNews(){
+  fing=true;
+  function next(){
+    if(!fQ.length){fing=false;return;}
+    var item=fQ.shift();
+    var sym=typeof item==='string'?item:item.sym;
+    fetchNewsItem(sym).then(function(){setTimeout(next,600);});
+  }
+  next();
 }
 function procFQ(){fing=true;function next(){if(!fQ.length){fing=false;return;}var item=fQ.shift();var sym=typeof item==='string'?item:item.sym;var indSym=typeof item==='string'?item:item.indSym;Promise.all([fetchIndicators(indSym,sym),fetchNewsItem(sym)]).then(function(){setTimeout(next,800);});}next();}
 
@@ -715,19 +781,43 @@ function renderOverview(){
   var summaries=S.portfolio.summaries||[];
   var accounts=S.portfolio.accounts||[];
   var holdings=allHoldings();
+  var combined=(S.summary&&S.summary.combined)||{};
   // Combined totals
-  var totalVal=0,totalCash=0,totalUnreal=0,totalReal=0;
-  summaries.forEach(function(s){var sm=s.summary||{};totalVal+=sm.totalValue||0;totalCash+=((sm.cash||{}).availableToTrade)||0;var inv=sm.investments||{};totalUnreal+=inv.unrealizedProfitLoss||0;totalReal+=inv.realizedProfitLoss||0;});
+  var totalVal=combined.totalValue||0,totalCash=combined.availableCash||0;
+  var totalUnreal=combined.unrealizedPnL||0,totalReal=combined.realizedPnL||0;
+  if(!totalVal){
+    summaries.forEach(function(s){var sm=s.summary||{};totalVal+=sm.totalValue||0;totalCash+=((sm.cash||{}).availableToTrade)||0;var inv=sm.investments||{};totalUnreal+=inv.unrealizedProfitLoss||0;totalReal+=inv.realizedProfitLoss||0;});
+  }
   var bullC=0,bearC=0;
   holdings.forEach(function(h){var sig=(S.indCache[h.indSymbol||h.symbol]||{}).signal||'';if(sig.indexOf('Bullish')>=0)bullC++;if(sig.indexOf('Bearish')>=0)bearC++;});
   // Account cards
-  var acctCards=summaries.map(function(s){var sm=s.summary||{};var inv=sm.investments||{};var cash=(sm.cash||{}).availableToTrade||0;return '<div class="card" style="border-left:3px solid var(--accent)"><div style="font-size:11px;font-weight:600;margin-bottom:8px;color:var(--accent2)">'+esc(s.label||'Account')+'</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px"><div><div class="clbl">Value</div><div style="font-weight:500;color:var(--green2)">'+gbp(sm.totalValue)+'</div></div><div><div class="clbl">Cash</div><div style="font-weight:500">'+gbp(cash)+'</div></div><div><div class="clbl">Unrealised</div><div style="font-weight:500;color:'+(inv.unrealizedProfitLoss>=0?'var(--green)':'var(--red)')+'">'+gbp(inv.unrealizedProfitLoss)+'</div></div><div><div class="clbl">Realised</div><div style="font-weight:500;color:'+(inv.realizedProfitLoss>=0?'var(--green)':'var(--red)')+'">'+gbp(inv.realizedProfitLoss)+'</div></div></div></div>';}).join('');
+  var acctCards=summaries.map(function(s){
+    var sm=s.summary||{};var inv=sm.investments||{};var cash=(sm.cash||{}).availableToTrade||0;
+    // Calculate day change for this account
+    var acctHoldings=(S.portfolio.accounts||[]).find(function(a){return a.label===s.label;});
+    var dayChg=0;
+    if(acctHoldings){(acctHoldings.holdings||[]).forEach(function(h){dayChg+=(h.dayChangePct||0)/100*(h.portfolioValue||0);});}
+    return '<div class="card" style="border-left:3px solid var(--accent)">'+
+      '<div style="font-size:11px;font-weight:600;margin-bottom:8px;color:var(--accent2)">'+esc(s.label||'Account')+'</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px">'+
+      '<div><div class="clbl">Total Value</div><div style="font-weight:500;color:var(--green2)">'+gbp(sm.totalValue)+'</div></div>'+
+      '<div><div class="clbl">Cash</div><div style="font-weight:500">'+gbp(cash)+'</div></div>'+
+      '<div><div class="clbl">Today\'s Change</div><div style="font-weight:500;color:'+(dayChg>=0?'var(--green)':'var(--red)')+'">'+(dayChg>=0?'+':'')+gbp(dayChg)+'</div></div>'+
+      '<div><div class="clbl">Holdings</div><div style="font-weight:500">'+((acctHoldings&&acctHoldings.holdings)||[]).length+' stocks</div></div>'+
+      '</div></div>';
+  }).join('');
 
   // Heatmaps per account
   // Heatmaps are shown in individual account tabs
 
   document.getElementById('ov-c').innerHTML=
-    '<div class="cards"><div class="card"><div class="clbl">Total Value</div><div class="cval ac">'+gbp(totalVal)+'</div><div class="csub">All accounts</div></div><div class="card"><div class="clbl">Available Cash</div><div class="cval">'+gbp(totalCash)+'</div></div><div class="card"><div class="clbl">Unrealised P&amp;L</div><div class="cval '+cls(totalUnreal)+'">'+gbp(totalUnreal)+'</div></div><div class="card"><div class="clbl">Realised P&amp;L</div><div class="cval '+cls(totalReal)+'">'+gbp(totalReal)+'</div></div><div class="card"><div class="clbl">Holdings</div><div class="cval ac">'+holdings.length+'</div></div><div class="card"><div class="clbl">Signals</div><div class="cval"><span class="up">'+bullC+'</span> / <span class="dn">'+bearC+'</span></div></div></div>'+
+    '<div class="cards">'+
+    '<div class="card"><div class="clbl">Total Value</div><div class="cval ac">'+gbp(totalVal)+'</div><div class="csub">All accounts</div></div>'+
+    '<div class="card"><div class="clbl">Today\'s Change</div><div class="cval '+cls(combined.dayChange||0)+'">'+gbp(combined.dayChange||0)+'</div><div class="csub '+cls(combined.dayChangePct||0)+'">'+(combined.dayChangePct>=0?'+':'')+f(combined.dayChangePct||0,2)+'%</div></div>'+
+    '<div class="card"><div class="clbl">Available Cash</div><div class="cval">'+gbp(totalCash)+'</div></div>'+
+    '<div class="card"><div class="clbl">Total Holdings</div><div class="cval ac">'+holdings.length+' stocks</div></div>'+
+    '<div class="card"><div class="clbl">Signals</div><div class="cval"><span class="up">'+bullC+'</span> bull / <span class="dn">'+bearC+'</span> bear</div></div>'+
+    '</div>'+
     (summaries.length?'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:12px">'+acctCards+'</div>':'')+
     '<div class="shdr"><div class="stitle">All Holdings</div></div>'+holdingsTable(holdings,'tbl-main');
 
@@ -1014,7 +1104,7 @@ function renderSettings(){
       '<a href="mailto:tradingassist.support@gmail.com" style="display:inline-flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border2);color:var(--accent2);padding:10px 16px;border-radius:var(--rs);font-size:13px;text-decoration:none;font-weight:500">'+
         '<span style="font-size:16px">&#9993;</span> tradingassist.support@gmail.com'+
       '</a>'+
-      '<div style="margin-top:10px;font-size:11px;color:var(--text3)">We typically respond within 72 hours. Please include your username in the email.</div>'+
+      '<div style="margin-top:10px;font-size:11px;color:var(--text3)">We typically respond within 72 hours.</div>'+
     '</div>'+
     '<div class="settings-section">'+
       '<div class="settings-title">&#128275; Session</div>'+
@@ -1284,11 +1374,13 @@ function refreshAll(){
   Promise.all([
     api('/api/portfolio').catch(function(){return{accounts:[],summaries:[]};}),
     api('/api/suggestions').catch(function(){return{};}),
-    api('/api/brokers').catch(function(){return{};})
+    api('/api/brokers').catch(function(){return{};}),
+    api('/api/summary').catch(function(){return{};})
   ]).then(function(res){
     S.portfolio=res[0]||{accounts:[],summaries:[]};
     S.suggestions=res[1]||{};
     BROKERS=res[2]||{};
+    S.summary=res[3]||{};
     allHoldings().forEach(function(h){owned[h.symbol]=1;});
     renderAll();setLoad(false);
     var allSyms=[],indSyms=[],seen={};
