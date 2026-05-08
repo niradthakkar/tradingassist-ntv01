@@ -865,7 +865,7 @@ def background_prefetch():
             try:
                 if not cache_valid(_ind_cache.get(sym), IND_TTL):
                     get_indicators(sym)
-                    time.sleep(0.8 if sym in TD_PREFERRED else 1.2)
+                    time.sleep(0.5 if sym in TD_PREFERRED else 0.8)
                 if not cache_valid(_profile_cache.get(sym), PROFILE_TTL):
                     get_profile(sym); time.sleep(0.4)
                 if not cache_valid(_quote_cache.get(sym), QUOTE_TTL):
@@ -1577,9 +1577,17 @@ def api_earnings():
                 "revSurprisePct":round(((ra-re_)/abs(re_))*100,1) if ra is not None and re_ else None,
                 "latestNews": news_item}
     def sort_upcoming(items):
-        """Sort by date ascending - earliest earnings first"""
-        enriched=[e for e in [enrich(i) for i in items] if e is not None]
-        enriched.sort(key=lambda x: (x.get("date","9999-99-99"), -x["marketCap"]))
+        """Sort by date ascending - earliest earnings first, next 30 days only"""
+        from datetime import date, timedelta
+        cutoff = (date.today() + timedelta(days=30)).strftime("%Y-%m-%d")
+        today_str = date.today().strftime("%Y-%m-%d")
+        enriched = [e for e in [enrich(i) for i in items] if e is not None]
+        # Only show next 30 days
+        enriched = [e for e in enriched if today_str <= e.get("date","") <= cutoff]
+        # Sort: earliest date first, then by market cap within same date
+        enriched.sort(key=lambda x: (x.get("date","9999-99-99"), -x.get("marketCap",0)))
+        # Portfolio stocks at top within each date group
+        enriched.sort(key=lambda x: (x.get("date","9999-99-99"), 0 if x.get("inPortfolio") else 1, -x.get("marketCap",0)))
         return enriched[:50]
     def sort_past(items):
         enriched=[e for e in [enrich(i) for i in items] if e is not None]
@@ -1806,154 +1814,149 @@ def save_user_watchlist():
 @app.route('/api/market/indices')
 @require_login  
 def api_market_indices():
-    """Fetch major market indices, commodities, crypto - uses Twelve Data"""
+    """Fetch major market indices, commodities, crypto, forex"""
     import concurrent.futures
     if cache_valid(_market_cache.get("data"), MARKET_TTL):
         return jsonify(_market_cache["data"])
 
-    # TD symbol map: our key -> (td_symbol, exchange)
     MARKET_SYMS = {
         "us_indices": [
-            {"key":"SPX",    "name":"S&P 500",        "currency":"USD","type":"index"},
-            {"key":"IXIC",   "name":"NASDAQ",          "currency":"USD","type":"index"},
-            {"key":"DJI",    "name":"Dow Jones",       "currency":"USD","type":"index"},
-            {"key":"RUT",    "name":"Russell 2000",    "currency":"USD","type":"index"},
-            {"key":"VIX",    "name":"VIX Fear Index",  "currency":"","type":"index"},
+            {"key":"SPX",     "name":"S&P 500",         "currency":"USD","type":"index"},
+            {"key":"IXIC",    "name":"NASDAQ",           "currency":"USD","type":"index"},
+            {"key":"DJI",     "name":"Dow Jones",        "currency":"USD","type":"index"},
+            {"key":"RUT",     "name":"Russell 2000",     "currency":"USD","type":"index"},
+            {"key":"VIX",     "name":"VIX Fear Index",   "currency":"USD","type":"index"},
         ],
         "us_stocks": [
-            {"key":"AAPL",  "name":"Apple",     "currency":"USD","type":"stock"},
-            {"key":"MSFT",  "name":"Microsoft", "currency":"USD","type":"stock"},
-            {"key":"NVDA",  "name":"NVIDIA",    "currency":"USD","type":"stock"},
-            {"key":"AMZN",  "name":"Amazon",    "currency":"USD","type":"stock"},
-            {"key":"GOOGL", "name":"Alphabet",  "currency":"USD","type":"stock"},
-            {"key":"META",  "name":"Meta",      "currency":"USD","type":"stock"},
-            {"key":"TSLA",  "name":"Tesla",     "currency":"USD","type":"stock"},
-            {"key":"AMD",   "name":"AMD",       "currency":"USD","type":"stock"},
+            {"key":"AAPL",    "name":"Apple",            "currency":"USD","type":"stock"},
+            {"key":"MSFT",    "name":"Microsoft",        "currency":"USD","type":"stock"},
+            {"key":"NVDA",    "name":"NVIDIA",           "currency":"USD","type":"stock"},
+            {"key":"AMZN",    "name":"Amazon",           "currency":"USD","type":"stock"},
+            {"key":"GOOGL",   "name":"Alphabet",         "currency":"USD","type":"stock"},
+            {"key":"META",    "name":"Meta",             "currency":"USD","type":"stock"},
+            {"key":"TSLA",    "name":"Tesla",            "currency":"USD","type":"stock"},
+            {"key":"AMD",     "name":"AMD",              "currency":"USD","type":"stock"},
         ],
         "uk_indices": [
-            {"key":"FTSE",  "name":"FTSE 100",  "currency":"GBP","type":"index"},
-            {"key":"MCX",   "name":"FTSE 250",  "currency":"GBP","type":"index"},
-            {"key":"GBP/USD","name":"GBP/USD",  "currency":"","type":"forex"},
-            {"key":"GBP/EUR","name":"GBP/EUR",  "currency":"","type":"forex"},
-            {"key":"GBP/INR","name":"GBP/INR",  "currency":"","type":"forex"},
+            {"key":"UKX",     "name":"FTSE 100",         "currency":"GBP","type":"index","exchange":"IDX"},
+            {"key":"MCX",     "name":"FTSE 250",         "currency":"GBP","type":"index","exchange":"IDX"},
         ],
         "uk_stocks": [
-            {"key":"HSBA",  "name":"HSBC",        "currency":"GBP","type":"stock","exchange":"LSE"},
-            {"key":"BP",    "name":"BP",           "currency":"GBP","type":"stock","exchange":"LSE"},
-            {"key":"SHEL",  "name":"Shell",        "currency":"GBP","type":"stock","exchange":"LSE"},
-            {"key":"AZN",   "name":"AstraZeneca",  "currency":"GBP","type":"stock","exchange":"LSE"},
-            {"key":"ULVR",  "name":"Unilever",     "currency":"GBP","type":"stock","exchange":"LSE"},
-            {"key":"VOD",   "name":"Vodafone",     "currency":"GBP","type":"stock","exchange":"LSE"},
+            {"key":"HSBA",    "name":"HSBC",             "currency":"GBP","type":"stock","exchange":"LSE"},
+            {"key":"BP",      "name":"BP",               "currency":"GBP","type":"stock","exchange":"LSE"},
+            {"key":"SHEL",    "name":"Shell",            "currency":"GBP","type":"stock","exchange":"LSE"},
+            {"key":"RIO",     "name":"Rio Tinto",        "currency":"GBP","type":"stock","exchange":"LSE"},
+            {"key":"AZN",     "name":"AstraZeneca",      "currency":"GBP","type":"stock","exchange":"LSE"},
         ],
         "india_indices": [
-            {"key":"SENSEX", "name":"BSE SENSEX", "currency":"INR","type":"index"},
-            {"key":"NIFTY",  "name":"Nifty 50",   "currency":"INR","type":"index"},
-            {"key":"BANKNIFTY","name":"Nifty Bank","currency":"INR","type":"index"},
-            {"key":"USD/INR","name":"USD/INR",     "currency":"","type":"forex"},
-            {"key":"GBP/INR","name":"GBP/INR",     "currency":"","type":"forex"},
+            {"key":"NIFTY",   "name":"Nifty 50",         "currency":"INR","type":"index","exchange":"NSE"},
+            {"key":"SENSEX",  "name":"BSE Sensex",       "currency":"INR","type":"index","exchange":"BSE"},
         ],
         "india_stocks": [
-            {"key":"RELIANCE","name":"Reliance",  "currency":"INR","type":"stock","exchange":"NSE"},
-            {"key":"TCS",    "name":"TCS",         "currency":"INR","type":"stock","exchange":"NSE"},
-            {"key":"INFY",   "name":"Infosys",     "currency":"INR","type":"stock","exchange":"NSE"},
-            {"key":"HDFCBANK","name":"HDFC Bank",  "currency":"INR","type":"stock","exchange":"NSE"},
-            {"key":"WIPRO",  "name":"Wipro",       "currency":"INR","type":"stock","exchange":"NSE"},
+            {"key":"TCS",     "name":"TCS",              "currency":"INR","type":"stock","exchange":"NSE"},
+            {"key":"RELIANCE","name":"Reliance",         "currency":"INR","type":"stock","exchange":"NSE"},
+            {"key":"INFY",    "name":"Infosys",          "currency":"INR","type":"stock","exchange":"NSE"},
+            {"key":"HDFCBANK","name":"HDFC Bank",        "currency":"INR","type":"stock","exchange":"NSE"},
         ],
         "europe_indices": [
-            {"key":"STOXX50E","name":"Euro Stoxx 50","currency":"EUR","type":"index"},
-            {"key":"DAX",    "name":"DAX (Germany)",  "currency":"EUR","type":"index"},
-            {"key":"CAC40",  "name":"CAC 40 (France)","currency":"EUR","type":"index"},
-            {"key":"IBEX35", "name":"IBEX 35 (Spain)","currency":"EUR","type":"index"},
-            {"key":"EUR/USD","name":"EUR/USD",         "currency":"","type":"forex"},
-            {"key":"EUR/GBP","name":"EUR/GBP",         "currency":"","type":"forex"},
+            {"key":"SX5E",    "name":"Euro Stoxx 50",    "currency":"EUR","type":"index","exchange":"IDX"},
+            {"key":"DAX",     "name":"DAX Germany",      "currency":"EUR","type":"index","exchange":"IDX"},
+            {"key":"CAC40",   "name":"CAC 40 France",    "currency":"EUR","type":"index","exchange":"IDX"},
+            {"key":"IBEX35",  "name":"IBEX 35 Spain",    "currency":"EUR","type":"index","exchange":"IDX"},
         ],
         "asia_indices": [
-            {"key":"N225",   "name":"Nikkei 225",      "currency":"JPY","type":"index"},
-            {"key":"HSI",    "name":"Hang Seng",        "currency":"HKD","type":"index"},
-            {"key":"AXJO",   "name":"ASX 200",          "currency":"AUD","type":"index"},
-            {"key":"KOSPI",  "name":"KOSPI (Korea)",    "currency":"KRW","type":"index"},
-            {"key":"USD/JPY","name":"USD/JPY",           "currency":"","type":"forex"},
-            {"key":"USD/CNH","name":"USD/CNH",           "currency":"","type":"forex"},
+            {"key":"N225",    "name":"Nikkei 225",       "currency":"JPY","type":"index","exchange":"IDX"},
+            {"key":"HSI",     "name":"Hang Seng",        "currency":"HKD","type":"index","exchange":"IDX"},
+            {"key":"SHCOMP",  "name":"Shanghai Comp",    "currency":"CNY","type":"index","exchange":"IDX"},
+            {"key":"KOSPI",   "name":"KOSPI Korea",      "currency":"KRW","type":"index","exchange":"IDX"},
         ],
         "crypto": [
-            {"key":"BTC/USD","name":"Bitcoin",   "currency":"USD","type":"crypto"},
-            {"key":"ETH/USD","name":"Ethereum",  "currency":"USD","type":"crypto"},
-            {"key":"BNB/USD","name":"BNB",        "currency":"USD","type":"crypto"},
-            {"key":"SOL/USD","name":"Solana",     "currency":"USD","type":"crypto"},
-            {"key":"XRP/USD","name":"XRP",        "currency":"USD","type":"crypto"},
-            {"key":"DOGE/USD","name":"Dogecoin",  "currency":"USD","type":"crypto"},
+            {"key":"BTC/USD", "name":"Bitcoin",          "currency":"USD","type":"crypto"},
+            {"key":"ETH/USD", "name":"Ethereum",         "currency":"USD","type":"crypto"},
+            {"key":"SOL/USD", "name":"Solana",           "currency":"USD","type":"crypto"},
+            {"key":"BNB/USD", "name":"Binance Coin",     "currency":"USD","type":"crypto"},
+            {"key":"XRP/USD", "name":"XRP",              "currency":"USD","type":"crypto"},
+            {"key":"ADA/USD", "name":"Cardano",          "currency":"USD","type":"crypto"},
         ],
         "commodities": [
-            {"key":"XAU/USD","name":"Gold ($/oz)",         "currency":"USD","type":"commodity"},
-            {"key":"XAG/USD","name":"Silver ($/oz)",        "currency":"USD","type":"commodity"},
-            {"key":"WTI/USD","name":"WTI Crude Oil ($/bbl)","currency":"USD","type":"commodity","exchange":"NYMEX"},
-            {"key":"BRENT/USD","name":"Brent Crude ($/bbl)","currency":"USD","type":"commodity"},
-            {"key":"NATGAS/USD","name":"Natural Gas",       "currency":"USD","type":"commodity"},
-            {"key":"XPT/USD","name":"Platinum ($/oz)",      "currency":"USD","type":"commodity"},
-            {"key":"COPPER/USD","name":"Copper",            "currency":"USD","type":"commodity"},
-            {"key":"GLD",   "name":"Gold ETF",              "currency":"USD","type":"stock"},
-            {"key":"USO",   "name":"Oil ETF",               "currency":"USD","type":"stock"},
+            {"key":"XAU/USD", "name":"Gold ($/oz)",      "currency":"USD","type":"commodity"},
+            {"key":"XAG/USD", "name":"Silver ($/oz)",    "currency":"USD","type":"commodity"},
+            {"key":"USOIL",   "name":"Crude Oil WTI",    "currency":"USD","type":"commodity"},
+            {"key":"UKOIL",   "name":"Crude Oil Brent",  "currency":"USD","type":"commodity"},
+            {"key":"NATGAS",  "name":"Natural Gas",      "currency":"USD","type":"commodity"},
+            {"key":"COPPER",  "name":"Copper",           "currency":"USD","type":"commodity"},
+        ],
+        "forex": [
+            {"key":"GBP/USD", "name":"GBP/USD",          "currency":"","type":"forex"},
+            {"key":"EUR/USD", "name":"EUR/USD",          "currency":"","type":"forex"},
+            {"key":"USD/JPY", "name":"USD/JPY",          "currency":"","type":"forex"},
+            {"key":"GBP/EUR", "name":"GBP/EUR",          "currency":"","type":"forex"},
+            {"key":"USD/INR", "name":"USD/INR",          "currency":"","type":"forex"},
+            {"key":"GBP/INR", "name":"GBP/INR",          "currency":"","type":"forex"},
+            {"key":"EUR/GBP", "name":"EUR/GBP",          "currency":"","type":"forex"},
+            {"key":"AUD/USD", "name":"AUD/USD",          "currency":"","type":"forex"},
+            {"key":"USD/CHF", "name":"USD/CHF",          "currency":"","type":"forex"},
+            {"key":"USD/CAD", "name":"USD/CAD",          "currency":"","type":"forex"},
         ],
     }
 
     def fetch_one(item):
-        key = item["key"]
-        itype = item.get("type","stock")
+        key      = item["key"]
+        itype    = item.get("type","stock")
         exchange = item.get("exchange","")
-        
-        # Use Finnhub for regular US stocks (faster, no rate limit issues)
+
+        # US stocks: use Finnhub (fast, no rate limit)
         if itype == "stock" and not exchange:
             try:
                 q = fh("quote", {"symbol": key})
-                if q and q.get("c") and float(q.get("c",0)) > 0:
+                if q and float(q.get("c",0) or 0) > 0:
                     return {**item,
-                        "price": round(float(q.get("c",0)),2),
-                        "change": round(float(q.get("d",0)),4),
-                        "changePct": round(float(q.get("dp",0)),2)
+                        "price": round(float(q["c"]),2),
+                        "change": round(float(q.get("d",0) or 0),2),
+                        "changePct": round(float(q.get("dp",0) or 0),2)
                     }
             except: pass
 
-        # Use Twelve Data for everything else (indices, forex, commodities, crypto)
-        try:
-            params = {"symbol": key}
-            if exchange: params["exchange"] = exchange
-            data = td("quote", params)
-            if data and data.get("status") != "error" and not data.get("code"):
-                price = float(data.get("close") or data.get("price") or 0)
-                change = float(data.get("change",0) or 0)
-                pct = float(data.get("percent_change",0) or 0)
-                if price > 0:
-                    decimals = 4 if itype in ("forex","crypto") else 2
-                    return {**item,
-                        "price": round(price, decimals),
-                        "change": round(change,4),
-                        "changePct": round(pct,2)
-                    }
-        except Exception as e:
-            print(f"Market fetch error {key}: {e}")
-        return {**item,"price":None,"change":0,"changePct":0}
+        # Everything else: Twelve Data
+        if TWELVE_KEY:
+            try:
+                params = {"symbol": key}
+                if exchange and exchange != "IDX": params["exchange"] = exchange
+                data = td("quote", params)
+                if data and not data.get("code") and data.get("status") != "error":
+                    price = float(data.get("close") or data.get("last") or 0)
+                    chg   = float(data.get("change",0) or 0)
+                    pct   = float(data.get("percent_change",0) or 0)
+                    if price > 0:
+                        dec = 4 if itype in ("forex","crypto") else 2
+                        return {**item, "price":round(price,dec),
+                                "change":round(chg,2), "changePct":round(pct,2)}
+                print(f"TD empty for {key}: {str(data)[:80]}")
+            except Exception as e:
+                print(f"Market fetch error {key}: {e}")
 
-    result = {k:[] for k in MARKET_SYMS}  # us_indices, us_stocks, uk_indices, uk_stocks, india_indices, india_stocks, europe_indices, asia_indices, crypto, commodities
-    all_items = [(k,item) for k,items in MARKET_SYMS.items() for item in items]
+        return {**item, "price": None, "change": 0, "changePct": 0}
+
+    result = {k: [] for k in MARKET_SYMS}
+    all_items = [(k, item) for k, items in MARKET_SYMS.items() for item in items]
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-            futures = {ex.submit(fetch_one, item): (k,item) for k,item in all_items}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            futures = {ex.submit(fetch_one, item): (k, item) for k, item in all_items}
             for f in concurrent.futures.as_completed(futures, timeout=25):
                 k, item = futures[f]
                 try:
                     r = f.result()
                     result[k].append(r)
-                except: 
-                    result[k].append({**item,"price":None,"change":0,"changePct":0})
+                except:
+                    result[k].append({**item, "price": None, "change": 0, "changePct": 0})
     except Exception as e:
         print(f"Market indices error: {e}")
 
-
-    # Cache result
     _market_cache["data"] = result
-    _market_cache["ts"] = time.time()
+    _market_cache["ts"]   = time.time()
     return jsonify(result)
+
 
 @app.route('/api/portfolio/quick')
 @require_login
@@ -1985,9 +1988,9 @@ def api_indicators_batch():
             return sym, {}
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
             futures = {ex.submit(fetch_one, sym): sym for sym in symbols}
-            for f in concurrent.futures.as_completed(futures, timeout=30):
+            for f in concurrent.futures.as_completed(futures, timeout=60):
                 try:
                     sym, ind = f.result()
                     if ind: result[sym] = ind
