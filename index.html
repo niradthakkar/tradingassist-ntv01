@@ -383,7 +383,7 @@ function usd(n){return n!=null?'$'+f(n):'-';}
 function cls(n){return n>0?'up':n<0?'dn':'nt';}
 function f2(n){return n!=null?Number(n).toFixed(2):'-';}
 function esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
-function api(url,opts){return fetch(url,opts).then(function(r){if(r.status===401){showAuth();throw new Error('Not authenticated');}return r.json();});}
+function api(url,opts){opts=opts||{};opts.credentials='include';return fetch(url,opts).then(function(r){if(r.status===401){showAuth();throw new Error('Not authenticated');}return r.json();});}
 function post(url,data){return api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}
 function del(url){return api(url,{method:'DELETE'});}
 function put(url,data){return api(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}
@@ -671,7 +671,8 @@ function fetchAllIndicatorsBatch(syms, indSyms){
       return fetch('/api/indicators/batch',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({symbols:batch})
+        body:JSON.stringify({symbols:batch}),
+        credentials:'include'
       }).then(function(r){
         if(r.status===401){showAuth();throw new Error('Not authenticated');}
         return r.json();
@@ -1646,6 +1647,7 @@ function renderAll(){setTimeout(drawSparklines,500);
 }
 
 function refreshAll(){
+  if(_portfolioFetching){console.log('Portfolio fetch already in progress');return;}
   if(!Object.keys(BROKERS).length) loadBrokers();
   setLoad(true);
   S.indCache={};S.newsCache={};newsLoaded=false;earningsLoaded=false;
@@ -1685,8 +1687,13 @@ function refreshAll(){
 }
 
 // Auto-refresh every 2 minutes
+// Guard to prevent concurrent portfolio refreshes
+var _portfolioFetching = false;
 setInterval(function(){
+  if(_portfolioFetching) return; // skip if already fetching
+  _portfolioFetching = true;
   api('/api/portfolio').catch(function(){return null;}).then(function(res){
+    _portfolioFetching = false;
     if(!res) return;
     S.portfolio=res;
     // Only re-render, don't re-fetch names or indicators
@@ -1717,11 +1724,7 @@ api('/api/auth/me').then(function(user){
 
 
 
-// ── INIT ──────────────────────────────────────────────────────────────
-// Handle password reset link
-if(resetToken && window.location.pathname === '/reset-password'){
-  showResetPassword(resetToken);
-}
+// ── INIT (handled above) ──────────────────────────────────────────────
 
 
 

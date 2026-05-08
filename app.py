@@ -6,6 +6,13 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 CORS(app)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+app.config.update(
+    SESSION_COOKIE_SECURE=False,      # Set True if HTTPS only - Render handles HTTPS at proxy level
+    SESSION_COOKIE_HTTPONLY=True,     # Prevent JS access to cookie
+    SESSION_COOKIE_SAMESITE='Lax',   # Allow cross-origin redirects
+    SESSION_COOKIE_NAME='ta_session', # Custom name to avoid conflicts
+    PERMANENT_SESSION_LIFETIME=86400 * 30,  # 30 days
+)
 
 # ── PATHS ─────────────────────────────────────────────────────────────
 USERS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.json')
@@ -553,11 +560,15 @@ def t212_get(endpoint, api_key):
 
 def fh(endpoint, params={}):
     finnhub_key = os.environ.get('FINNHUB_KEY', '')
+    if not finnhub_key: return {}
     try:
         p = dict(params); p["token"] = finnhub_key
         r = requests.get(f"{FINNHUB_BASE}/{endpoint}", params=p, timeout=15)
         if r.status_code == 200: return r.json()
-        print(f"FH {endpoint} returned {r.status_code}")
+        if r.status_code == 429:
+            time.sleep(1)  # rate limit - back off
+        elif r.status_code != 403:  # don't log 403 for premium endpoints
+            print(f"FH {endpoint} returned {r.status_code}")
     except Exception as e: print(f"FH error {endpoint}: {e}")
     return {}
 
@@ -849,16 +860,35 @@ def get_quote(symbol):
 _bg_symbols = set()
 _bg_lock    = threading.Lock()
 
+def get_gbpusd():
+    """Get GBP/USD rate - use Twelve Data forex (free tier supports forex)"""
+    if TWELVE_KEY:
+        try:
+            data = td("quote", {"symbol": "GBP/USD"})
+            if data and not data.get("code"):
+                rate = float(data.get("close") or data.get("price") or 0)
+                if 0.5 < rate < 3.0:  # sanity check
+                    _quote_cache["OANDA:GBP_USD"] = {"c": rate, "dp": 0}
+                    return rate
+        except: pass
+    # Fallback to Finnhub
+    try:
+        q = fh("quote", {"symbol": "OANDA:GBP_USD"})
+        if q and q.get("c"): 
+            _quote_cache["OANDA:GBP_USD"] = q
+            return q["c"]
+    except: pass
+    return 1.27  # default fallback
+
 def background_prefetch():
     # Pre-fetch GBP/USD exchange rate on startup
     try:
-        get_quote("OANDA:GBP_USD")
-        get_quote("OANDA:USD_GBP")
+        get_gbpusd()
     except: pass
     while True:
         # Keep FX rates fresh
         try:
-            get_quote("OANDA:GBP_USD")
+            get_gbpusd()
         except: pass
         with _bg_lock: syms=list(_bg_symbols)
         for sym in syms:
@@ -1901,9 +1931,12 @@ def api_market_indices():
     }
 
     def fetch_one(item):
-        key      = item["key"]
+        key      = item.get("key","").strip()
         itype    = item.get("type","stock")
         exchange = item.get("exchange","")
+
+        # Skip empty keys
+        if not key: return {**item, "price": None, "change": 0, "changePct": 0}
 
         # US stocks: use Finnhub (fast, no rate limit)
         if itype == "stock" and not exchange:
