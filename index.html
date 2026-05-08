@@ -938,15 +938,62 @@ function renderOverview(){
 
 // ── WATCHLIST ─────────────────────────────────────────────────────────
 function renderWatchlist(){
-  var removed={};S.removedWL.forEach(function(t){removed[t]=1;});
+  var removed={};
+  S.removedWL.forEach(function(t){removed[t]=1;});
   var all=allHoldings();
+
   // Show loading if portfolio not ready yet
   if(!all.length && !S.extraWL.length){
     document.getElementById('wl-c').innerHTML='<div style="padding:30px;text-align:center;color:var(--text3);font-size:12px"><div class="sp" style="margin:0 auto 10px"></div>Waiting for portfolio...</div>';
     setTimeout(renderWatchlist,1500);
     return;
   }
-  var dummy='';//var items=all.filter(function(h){return !removed[h.ticker||h.symbol];});S.extraWL.forEach(function(t){var found=items.some(function(h){return h.symbol===t||h.ticker===t;});if(!found) items.push({ticker:t,symbol:t,sector:'Manual',portfolioValue:0,ppl:null,account:'Manual',currency:'USD',quantity:0,averagePrice:0,currentPrice:0});});var rows=items.map(function(h){var sym=h.symbol||h.ticker||'';var indSym=h.indSymbol||sym;var ind=S.indCache[indSym]||S.indCache[sym]||{},news=S.newsCache[sym],hasInd=Object.keys(ind).length>0;return '<tr data-symbol="'+sym+'"><td><div><div class="tick">'+sym+'</div><div class="sname">'+esc(NC[sym]||h.name||'')+'</div><div class="stag">'+(h.sector||'Other')+'</div></div></td><td><span class="badge b-wat">'+(h.account||'Manual')+'</span></td><td class="mono '+cls(h.ppl)+'">'+(h.ppl!=null?(h.ppl>=0?'+':'')+settleFmt(h.ppl):'-')+'</td><td class="sig-cell">'+(hasInd?signalPill(ind.signal||'Neutral'):'<span class="pill p-ld">loading</span>')+'</td><td class="ind-cell"><div class="ibox">'+(hasInd?renderInds(ind):'<span class="ind-loading">loading</span>')+'</div>'+(hasInd&&ind.closes&&ind.closes.length>1?'<canvas class="spark" data-sym="'+sym+'" width="80" height="20" style="display:block;margin-top:2px"></canvas>':'')+'</td><td class="news-cell">'+(news!==undefined?renderNewsInline(news,sym):'<span class="nld">loading</span>')+'</td><td><button class="rmbtn" onclick="removeWL(\''+sym+'\')">X</button></td></tr>';}).join('');document.getElementById('wl-c').innerHTML='<div class="shdr"><div class="stitle">Watchlist <span class="badge b-wat">WATCH</span></div><div style="font-size:11px;color:var(--text3)">'+items.length+' stocks</div></div><div class="tw"><table><thead><tr><th>Ticker</th><th>Account</th><th>P&amp;L GBP</th><th>Signal</th><th>Indicators</th><th>News</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';var toFetch=items.map(function(h){return h.symbol||h.ticker;}).filter(function(s){return s&&!S.indCache[s];});if(toFetch.length) queueFetch(toFetch);items.forEach(function(h){fetchName(h.symbol||h.ticker);});}
+
+  var items=all.filter(function(h){return !removed[h.ticker||h.symbol];});
+  S.extraWL.forEach(function(t){
+    var found=items.some(function(h){return h.symbol===t||h.ticker===t;});
+    if(!found) items.push({ticker:t,symbol:t,sector:'Manual',portfolioValue:0,ppl:null,account:'Manual',currency:'USD',quantity:0,averagePrice:0,currentPrice:0});
+  });
+
+  if(!items.length){
+    document.getElementById('wl-c').innerHTML='<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">No stocks in watchlist. All portfolio stocks appear here automatically.<br>Use the box above to add extra tickers.</div>';
+    return;
+  }
+
+  var rows=items.map(function(h){
+    var sym=h.symbol||h.ticker||'';
+    var indSym=h.indSymbol||sym;
+    var ind=S.indCache[indSym]||S.indCache[sym]||{};
+    var news=S.newsCache[sym];
+    var hasInd=Object.keys(ind).length>0;
+    var settleSym=h.settleSymbol||'£';
+    var settleFmt=function(n){return settleSym+(Math.abs(n)<1000?Math.abs(n).toFixed(2):Math.abs(n).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}));};
+    return '<tr data-symbol="'+sym+'">'+
+      '<td><div><div class="tick">'+sym+'</div>'+
+        '<div class="sname">'+esc(NC[sym]||h.name||'')+'</div>'+
+        '<div class="stag">'+(h.sector||'Other')+'</div></div></td>'+
+      '<td><span class="badge b-wat">'+(h.account||'Manual')+'</span></td>'+
+      '<td class="mono '+cls(h.ppl)+'">'+(h.ppl!=null?(h.ppl>=0?'+':'')+settleFmt(h.ppl):'-')+'</td>'+
+      '<td class="sig-cell">'+(hasInd?signalPill(ind.signal||'Neutral'):'<span class="pill p-ld">loading</span>')+'</td>'+
+      '<td class="ind-cell"><div class="ibox">'+(hasInd?renderInds(ind):'<span class="ind-loading">loading</span>')+'</div>'+
+        (hasInd&&ind.closes&&ind.closes.length>1?'<canvas class="spark" data-sym="'+sym+'" width="80" height="20" style="display:block;margin-top:2px"></canvas>':'')+
+      '</td>'+
+      '<td class="news-cell">'+(news!==undefined?renderNewsInline(news,sym):'<span class="nld">loading</span>')+'</td>'+
+      '<td><button class="rmbtn" onclick="removeWL('+JSON.stringify(sym)+')">X</button></td>'+
+    '</tr>';
+  }).join('');
+
+  document.getElementById('wl-c').innerHTML=
+    '<div class="shdr"><div class="stitle">Watchlist <span class="badge b-wat">WATCH</span></div>'+
+    '<div style="font-size:11px;color:var(--text3)">'+items.length+' stocks</div></div>'+
+    '<div class="tw"><table><thead><tr>'+
+      '<th>Ticker</th><th>Account</th><th>P&L GBP</th><th>Signal</th><th>Indicators</th><th>News</th><th></th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+
+  var toFetch=items.map(function(h){return h.symbol||h.ticker;}).filter(function(s){return s&&!S.indCache[s];});
+  if(toFetch.length) queueFetch(toFetch);
+  items.forEach(function(h){fetchName(h.symbol||h.ticker);});
+}
 
 // ── SUGGESTIONS ───────────────────────────────────────────────────────
 function renderSuggestions(tf){
