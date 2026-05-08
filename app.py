@@ -257,6 +257,7 @@ LEVERAGE_MAP = {
     '3HODl_EQ': {'leverage':'2x','underlying':'OIL', 'name':'2x Crude Oil ETP'},
     'SOXLl_EQ': {'leverage':'3x','underlying':'SOXX','name':'3x Semiconductor ETF'},
     'ARM3l_EQ': {'leverage':'3x','underlying':'ARM', 'name':'3x Arm Holdings ETP'},
+    'GOOl_EQ':  {'leverage':'3x','underlying':'GOOGL','name':'3x Alphabet ETP'},
     'SEMIl_EQ': {'leverage':'1x','underlying':'SOXX','name':'Semiconductor ETF'},
     'EQQQl_EQ': {'leverage':'1x','underlying':'QQQ', 'name':'Invesco EQQQ Nasdaq'},
     'RRl_EQ':   {'leverage':'1x','underlying':'RR',  'name':'Rolls-Royce Holdings'},
@@ -521,6 +522,7 @@ IND_TTL      = 3600
 PROFILE_TTL  = 86400
 QUOTE_TTL    = 300
 EARNINGS_TTL = 1800   # 30 mins
+MARKET_TTL   = 600    # 10 minutes - avoid Twelve Data rate limits
 PORTFOLIO_TTL = 120   # 2 minutes
 
 def cache_valid(entry, ttl):
@@ -661,9 +663,19 @@ def get_screener_suggestions():
     return []  # Will be populated below
 
 def clean_symbol(ticker):
+    """Convert T212 ticker to clean symbol for API lookups"""
+    # First check LEVERAGE_MAP for known ETPs
+    if ticker in LEVERAGE_MAP:
+        return LEVERAGE_MAP[ticker].get("underlying", ticker)
+    # UK leveraged ETPs end in l_EQ
+    if ticker.endswith("l_EQ") or ticker.endswith("l_US"):
+        s = ticker.split("_")[0]
+        s = re.sub(r"^\d+", "", s)
+        s = s.rstrip("l")
+        return s.upper()
+    # Regular tickers - just strip exchange suffix
     s = ticker.split("_")[0]
     s = re.sub(r"^\d+", "", s)
-    s = s.rstrip("l")
     return s.upper()
 
 def is_us(ticker): return "_US_EQ" in ticker
@@ -836,18 +848,6 @@ def get_quote(symbol):
 # ── BACKGROUND PRE-FETCH ──────────────────────────────────────────────
 _bg_symbols = set()
 _bg_lock    = threading.Lock()
-
-def warm_market_cache():
-    """Pre-warm market cache on startup"""
-    try:
-        import requests as req
-        import time as t
-        t.sleep(5)  # wait for server to start
-        # Trigger market indices fetch in background
-        with app.test_client() as client:
-            pass  # just importing is enough
-        print("Market cache warm-up initiated")
-    except: pass
 
 def background_prefetch():
     # Pre-fetch GBP/USD exchange rate on startup
@@ -1517,17 +1517,25 @@ def api_earnings():
     print(f"Earnings: fetching fresh data from Finnhub...")
     today=datetime.now().strftime("%Y-%m-%d")
     tomorrow=(datetime.now()+timedelta(days=1)).strftime("%Y-%m-%d")
-    future=(datetime.now()+timedelta(days=30)).strftime("%Y-%m-%d")
-    past=(datetime.now()-timedelta(days=30)).strftime("%Y-%m-%d")
+    future=(datetime.now()+timedelta(days=90)).strftime("%Y-%m-%d")
+    past=(datetime.now()-timedelta(days=90)).strftime("%Y-%m-%d")
     import concurrent.futures
     def fetch_upcoming(from_dt, to_dt):
         result = fh("calendar/earnings", {"from": from_dt, "to": to_dt})
-        print(f"Earnings upcoming raw: {type(result)} keys={list(result.keys()) if isinstance(result,dict) else 'list'}")
+        if result and isinstance(result, dict):
+            count = len(result.get("earningsCalendar",[]))
+            print(f"Earnings upcoming: got {count} items")
+        else:
+            print(f"Earnings upcoming: empty response")
         return result or {}
 
     def fetch_past(from_dt, to_dt):
         result = fh("calendar/earnings", {"from": from_dt, "to": to_dt})
-        print(f"Earnings past raw: {type(result)} keys={list(result.keys()) if isinstance(result,dict) else 'list'}")
+        if result and isinstance(result, dict):
+            count = len(result.get("earningsCalendar",[]))
+            print(f"Earnings past: got {count} items")
+        else:
+            print(f"Earnings past: empty response")
         return result or {}
 
     try:
@@ -1554,7 +1562,7 @@ def api_earnings():
         name=p.get("name","") or NAME_MAP.get(sym,"")
         q=_quote_cache.get(sym,{}); mcap=MARKET_CAP.get(sym,0)
         in_p=sym in owned; price=q.get("c") or 0
-        if price>0 and price<5 and not in_p: return None
+        if price>0 and price<2 and not in_p: return None  # only filter penny stocks under $2
         ea=item.get("epsActual"); ee=item.get("epsEstimate")
         ra=item.get("revenueActual"); re_=item.get("revenueEstimate")
         # Get top news headline from cache (no extra API call)
@@ -1795,10 +1803,6 @@ def save_user_watchlist():
         save_users(users)
     return jsonify({'success': True})
 
-_market_cache = {}   # market data cache
-_news_cache   = {}   # symbol -> list of news items
-MARKET_TTL = 300     # 5 minutes - cached aggressively
-
 @app.route('/api/market/indices')
 @require_login  
 def api_market_indices():
@@ -1892,25 +1896,39 @@ def api_market_indices():
         ],
     }
 
-    def fetch_td(item):
+    def fetch_one(item):
         key = item["key"]
         itype = item.get("type","stock")
         exchange = item.get("exchange","")
+        
+        # Use Finnhub for regular US stocks (faster, no rate limit issues)
+        if itype == "stock" and not exchange:
+            try:
+                q = fh("quote", {"symbol": key})
+                if q and q.get("c") and float(q.get("c",0)) > 0:
+                    return {**item,
+                        "price": round(float(q.get("c",0)),2),
+                        "change": round(float(q.get("d",0)),4),
+                        "changePct": round(float(q.get("dp",0)),2)
+                    }
+            except: pass
+
+        # Use Twelve Data for everything else (indices, forex, commodities, crypto)
         try:
             params = {"symbol": key}
             if exchange: params["exchange"] = exchange
-            # Use quote endpoint for all types
             data = td("quote", params)
-            if data and not data.get("status") == "error":
-                # TD quote returns different fields depending on instrument type
-                price = (data.get("close") or data.get("price") or
-                         data.get("last") or data.get("bid") or 0)
-                price = float(price) if price else 0
+            if data and data.get("status") != "error" and not data.get("code"):
+                price = float(data.get("close") or data.get("price") or 0)
                 change = float(data.get("change",0) or 0)
                 pct = float(data.get("percent_change",0) or 0)
                 if price > 0:
-                    return {**item,"price":round(price,4 if itype in ("forex","crypto") else 2),
-                            "change":round(change,4),"changePct":round(pct,2)}
+                    decimals = 4 if itype in ("forex","crypto") else 2
+                    return {**item,
+                        "price": round(price, decimals),
+                        "change": round(change,4),
+                        "changePct": round(pct,2)
+                    }
         except Exception as e:
             print(f"Market fetch error {key}: {e}")
         return {**item,"price":None,"change":0,"changePct":0}
@@ -1919,8 +1937,8 @@ def api_market_indices():
     all_items = [(k,item) for k,items in MARKET_SYMS.items() for item in items]
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
-            futures = {ex.submit(fetch_td, item): (k,item) for k,item in all_items}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+            futures = {ex.submit(fetch_one, item): (k,item) for k,item in all_items}
             for f in concurrent.futures.as_completed(futures, timeout=25):
                 k, item = futures[f]
                 try:
@@ -1967,7 +1985,7 @@ def api_indicators_batch():
             return sym, {}
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
             futures = {ex.submit(fetch_one, sym): sym for sym in symbols}
             for f in concurrent.futures.as_completed(futures, timeout=30):
                 try:
