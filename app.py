@@ -1080,28 +1080,28 @@ def register():
     postcode= data.get('postcode','').strip()
     country = data.get('country','').strip()
     # Validate all required fields
-    if not email:    return jsonify({'error':'Email address is required'}),400
-    if not name:     return jsonify({'error':'Full name is required'}),400
-    if not phone:    return jsonify({'error':'Phone number is required'}),400
-    if not address:  return jsonify({'error':'Street address is required'}),400
-    if not postcode: return jsonify({'error':'Postcode is required'}),400
-    if not country:  return jsonify({'error':'Please select your country'}),400
-    if not password: return jsonify({'error':'Password is required'}),400
+    if not email:    return jsonify({'error':'Email address is required'}),200
+    if not name:     return jsonify({'error':'Full name is required'}),200
+    if not phone:    return jsonify({'error':'Phone number is required'}),200
+    if not address:  return jsonify({'error':'Street address is required'}),200
+    if not postcode: return jsonify({'error':'Postcode is required'}),200
+    if not country:  return jsonify({'error':'Please select your country'}),200
+    if not password: return jsonify({'error':'Password is required'}),200
     if '@' not in email or '.' not in email:
-        return jsonify({'error':'Please enter a valid email address'}),400
+        return jsonify({'error':'Please enter a valid email address'}),200
     # Password strength validation
     if len(password)<8:
-        return jsonify({'error':'Password must be at least 8 characters'}),400
+        return jsonify({'error':'Password must be at least 8 characters'}),200
     has_upper = any(c.isupper() for c in password)
     has_lower = any(c.islower() for c in password)
     has_digit = any(c.isdigit() for c in password)
     has_special = any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in password)
     strength = sum([has_upper, has_lower, has_digit, has_special])
     if strength < 3:
-        return jsonify({'error':'Password must contain at least 3 of: uppercase, lowercase, number, special character (!@#$%^&*)'}),400
+        return jsonify({'error':'Password must contain at least 3 of: uppercase, lowercase, number, special character (!@#$%^&*)'}),200
     users=load_users()
     if email in users:
-        return jsonify({'error':'An account with this email already exists'}),400
+        return jsonify({'error':'An account with this email already exists'}),200
     users[email]={
         'username':email,
         'name':name,
@@ -1125,10 +1125,10 @@ def login():
     email   =data.get('email','').strip().lower()
     password=data.get('password','')
     if not email or not password:
-        return jsonify({'error':'Email and password are required'}),400
+        return jsonify({'error':'Email and password are required'}),200
     user=get_user(email)
     if not user or user['password']!=hash_password(password):
-        return jsonify({'error':'Invalid email or password'}),401
+        return jsonify({'error':'Invalid email or password'}),200  # 200 so frontend can show the error
     session['username']=email
     return jsonify({'success':True,'username':email,'name':user.get('name',email),'email':email,'phone':user.get('phone',''),'address':user.get('address',''),'postcode':user.get('postcode',''),'country':user.get('country',''),'role':user.get('role','user'),'accounts':user.get('accounts',[])})
 

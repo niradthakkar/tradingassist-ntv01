@@ -365,8 +365,9 @@ var S={portfolio:{accounts:[],summaries:[]},suggestions:{},earnings:{},
   sugTF:'1day'};
 var currentUser=null;
 var owned={};
-var USER_CURRENCY='GBP';   // default, updated from summary
+var USER_CURRENCY='GBP';
 var USER_CURRENCY_SYMBOL='£';
+var _portfolioFetching=false;
 
 function formatPortfolioCurrency(n){
   if(n==null) return '-';
@@ -383,7 +384,7 @@ function usd(n){return n!=null?'$'+f(n):'-';}
 function cls(n){return n>0?'up':n<0?'dn':'nt';}
 function f2(n){return n!=null?Number(n).toFixed(2):'-';}
 function esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
-function api(url,opts){opts=opts||{};opts.credentials='include';return fetch(url,opts).then(function(r){if(r.status===401){showAuth();throw new Error('Not authenticated');}return r.json();});}
+function api(url,opts){opts=opts||{};opts.credentials='include';return fetch(url,opts).then(function(r){if(r.status===401&&url.indexOf('/api/auth/')===-1){showAuth();throw new Error('Not authenticated');}return r.json();});}
 function post(url,data){return api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}
 function del(url){return api(url,{method:'DELETE'});}
 function put(url,data){return api(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}
@@ -1687,8 +1688,7 @@ function refreshAll(){
 }
 
 // Auto-refresh every 2 minutes
-// Guard to prevent concurrent portfolio refreshes
-var _portfolioFetching = false;
+// Auto-refresh every 2 minutes
 setInterval(function(){
   if(_portfolioFetching) return; // skip if already fetching
   _portfolioFetching = true;
