@@ -362,12 +362,19 @@ var S={portfolio:{accounts:[],summaries:[]},suggestions:{},earnings:{},
   removedWL:[],
   indCache:JSON.parse(sessionStorage.getItem('indCache')||'{}'),
   newsCache:JSON.parse(sessionStorage.getItem('newsCache')||'{}'),
-  sugTF:'1day'};
+  sugTF:'1day',
+  macro:{},
+  analystCache:{}};
 var currentUser=null;
 var owned={};
 var USER_CURRENCY='GBP';
 var USER_CURRENCY_SYMBOL='£';
 var _portfolioFetching=false;
+var BROKERS={};
+var fing=false;
+var earningsLoaded=false;
+var marketsLoaded=false;
+var newsLoaded=false;
 
 function formatPortfolioCurrency(n){
   if(n==null) return '-';
@@ -1257,7 +1264,7 @@ function renderEarnings(tab){tab=tab||'upcoming';var data=S.earnings||{};var all
 
 // ── SETTINGS ──────────────────────────────────────────────────────────
 // ── BROKER SYSTEM ────────────────────────────────────────────────────
-var BROKERS = {};  // loaded from /api/brokers
+BROKERS = {};  // loaded from /api/brokers
 
 function loadBrokers(){
   return api('/api/brokers').then(function(r){
@@ -1708,6 +1715,12 @@ function refreshAll(){
       S.portfolio=quick;
       renderAll();
     }
+  }).catch(function(){});
+
+  // Also fetch macro/sentiment data
+  api('/api/macro').then(function(d){
+    if(d) S.macro=d;
+    renderOverview();
   }).catch(function(){});
 
   // Step 2: Load everything in parallel

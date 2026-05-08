@@ -187,6 +187,31 @@ FINNHUB_BASE   = 'https://finnhub.io/api/v1'
 TWELVE_BASE    = 'https://api.twelvedata.com'
 TWELVE_KEY     = os.environ.get('TWELVE_DATA_KEY', '')
 
+# ── NEW API KEYS (Phase 2 - all sources) ──────────────────────────────
+ALPHA_KEY      = os.environ.get('ALPHA_VANTAGE_KEY', '')
+POLYGON_KEY    = os.environ.get('POLYGON_KEY', '')
+OPENEX_KEY     = os.environ.get('OPEN_EXCHANGE_KEY', '')
+MARKETAUX_KEY  = os.environ.get('MARKETAUX_KEY', '')
+FMP_KEY        = os.environ.get('FMP_KEY', '')
+NEWS_API_KEY   = os.environ.get('NEWS_API_KEY', '')
+FRED_KEY       = os.environ.get('FRED_KEY', '')
+
+# ── API BASE URLS ─────────────────────────────────────────────────────
+YAHOO_BASE     = 'https://query1.finance.yahoo.com'
+YAHOO_BASE2    = 'https://query2.finance.yahoo.com'
+ALPHA_BASE     = 'https://www.alphavantage.co/query'
+POLYGON_BASE   = 'https://api.polygon.io'
+OPENEX_BASE    = 'https://openexchangerates.org/api'
+MARKETAUX_BASE = 'https://api.marketaux.com/v1'
+FMP_BASE       = 'https://financialmodelingprep.com/api/v3'
+NEWS_BASE      = 'https://newsapi.org/v2'
+FRED_BASE      = 'https://api.stlouisfed.org/fred'
+NASDAQ_BASE    = 'https://api.nasdaq.com/api'
+STOOQ_BASE     = 'https://stooq.com/q/d/l'
+STOCKTWITS_BASE= 'https://api.stocktwits.com/api/2'
+TIPRANKS_BASE  = 'https://www.tipranks.com/api/stocks'
+SEC_BASE       = 'https://data.sec.gov'
+
 # ── MAPS & CONSTANTS ──────────────────────────────────────────────────
 SECTOR_MAP = {
     'INTC':'Technology','AVGO':'Technology','QCOM':'Technology','ASML':'Technology',
@@ -588,6 +613,546 @@ def td(endpoint, params={}):
     except Exception as e: print(f"TD error {endpoint}: {e}")
     return {}
 
+# ── YAHOO FINANCE v8 (Primary backbone - no key, unlimited) ──────────
+
+def yf_quote(symbol):
+    """Yahoo Finance quote - fast, no key, very reliable"""
+    try:
+        url = f"{YAHOO_BASE}/v8/finance/chart/{symbol}"
+        r = requests.get(url, params={'interval':'1d','range':'1d'},
+                        headers={'User-Agent':'Mozilla/5.0'}, timeout=10)
+        if r.status_code != 200: return {}
+        data = r.json()
+        result = data.get('chart',{}).get('result',[])
+        if not result: return {}
+        meta = result[0].get('meta',{})
+        price = meta.get('regularMarketPrice',0) or meta.get('previousClose',0)
+        prev  = meta.get('previousClose', price)
+        chg   = price - prev
+        chgp  = (chg/prev*100) if prev else 0
+        return {'c': round(price,4), 'd': round(chg,4), 'dp': round(chgp,2),
+                'pc': round(prev,4), 'sym': symbol,
+                'currency': meta.get('currency','USD'),
+                'name': meta.get('shortName','')}
+    except Exception as e:
+        print(f"YF quote error {symbol}: {e}")
+        return {}
+
+def yf_candles(symbol, period='6mo', interval='1d'):
+    """Yahoo Finance candles - replaces Finnhub for indicators"""
+    try:
+        url = f"{YAHOO_BASE}/v8/finance/chart/{symbol}"
+        r = requests.get(url, params={'interval':interval,'range':period},
+                        headers={'User-Agent':'Mozilla/5.0'}, timeout=15)
+        if r.status_code != 200: return {}
+        data = r.json()
+        result = data.get('chart',{}).get('result',[])
+        if not result: return {}
+        quotes = result[0].get('indicators',{}).get('quote',[{}])[0]
+        ts = result[0].get('timestamp',[])
+        closes = [c for c in (quotes.get('close') or []) if c is not None]
+        highs  = [h for h in (quotes.get('high') or [])  if h is not None]
+        lows   = [l for l in (quotes.get('low') or [])   if l is not None]
+        vols   = [v for v in (quotes.get('volume') or []) if v is not None]
+        return {'closes':closes,'highs':highs,'lows':lows,'volumes':vols,
+                'timestamps':ts,'count':len(closes)}
+    except Exception as e:
+        print(f"YF candles error {symbol}: {e}")
+        return {}
+
+def yf_news(symbol, count=10):
+    """Yahoo Finance news per ticker"""
+    try:
+        url = f"{YAHOO_BASE}/v1/finance/search"
+        r = requests.get(url, params={'q':symbol,'newsCount':count,'quotesCount':0},
+                        headers={'User-Agent':'Mozilla/5.0'}, timeout=10)
+        if r.status_code != 200: return []
+        items = r.json().get('news',[])
+        news = []
+        for item in items[:count]:
+            news.append({
+                'headline': item.get('title',''),
+                'summary':  item.get('summary',''),
+                'url':      item.get('link',''),
+                'source':   item.get('publisher','Yahoo Finance'),
+                'datetime': item.get('providerPublishTime', int(time.time())),
+                'sentiment':'Neutral',
+            })
+        return news
+    except Exception as e:
+        print(f"YF news error {symbol}: {e}")
+        return []
+
+def yf_earnings(symbol):
+    """Yahoo Finance earnings data for a symbol"""
+    try:
+        url = f"{YAHOO_BASE2}/v10/finance/quoteSummary/{symbol}"
+        r = requests.get(url, params={'modules':'earningsTrend,earnings'},
+                        headers={'User-Agent':'Mozilla/5.0'}, timeout=10)
+        if r.status_code != 200: return {}
+        return r.json().get('quoteSummary',{}).get('result',[{}])[0]
+    except Exception as e:
+        print(f"YF earnings error {symbol}: {e}")
+        return {}
+
+def yf_index(symbol):
+    """Yahoo Finance index quote - use ^GSPC ^FTSE etc."""
+    return yf_quote(symbol)
+
+# ── NASDAQ EARNINGS (No key, very reliable) ───────────────────────────
+
+def nasdaq_earnings(date_from=None, date_to=None):
+    """Nasdaq earnings calendar - much more reliable than Finnhub"""
+    try:
+        from datetime import date, timedelta
+        if not date_from:
+            date_from = date.today().strftime('%Y-%m-%d')
+        if not date_to:
+            date_to = (date.today() + timedelta(days=30)).strftime('%Y-%m-%d')
+        url = f"{NASDAQ_BASE}/calendar/earnings"
+        r = requests.get(url, params={'date': date_from},
+                        headers={'User-Agent':'Mozilla/5.0',
+                                 'Accept':'application/json, text/plain, */*'}, timeout=15)
+        if r.status_code != 200:
+            print(f"Nasdaq earnings returned {r.status_code}")
+            return []
+        rows = r.json().get('data',{}).get('rows',[]) or []
+        result = []
+        for row in rows:
+            result.append({
+                'symbol':          row.get('symbol',''),
+                'name':            row.get('name',''),
+                'date':            row.get('lastReportDate','') or date_from,
+                'epsEstimate':     _safe_float(row.get('epsForecast')),
+                'epsActual':       _safe_float(row.get('eps')),
+                'revenueEstimate': None,
+                'revenueActual':   None,
+                'when':            'time not supplied',
+            })
+        return result
+    except Exception as e:
+        print(f"Nasdaq earnings error: {e}")
+        return []
+
+def _safe_float(val):
+    try: return float(str(val).replace(',','').replace('$','')) if val and str(val) not in ['N/A','--',''] else None
+    except: return None
+
+# ── STOOQ (Global indices - no key) ───────────────────────────────────
+
+def stooq_quote(symbol):
+    """Stooq.com quote for global indices - ^SPX, ^UKX, ^NKX etc."""
+    try:
+        r = requests.get(STOOQ_BASE, params={'s':symbol,'i':'d'},
+                        headers={'User-Agent':'Mozilla/5.0'}, timeout=10)
+        if r.status_code != 200: return {}
+        lines = r.text.strip().split('\n')
+        if len(lines) < 2: return {}
+        headers = lines[0].split(',')
+        vals = lines[-1].split(',')
+        data = dict(zip(headers, vals))
+        price = float(data.get('Close', 0) or 0)
+        open_ = float(data.get('Open', price) or price)
+        chg   = price - open_
+        chgp  = (chg/open_*100) if open_ else 0
+        return {'c': round(price,2), 'd': round(chg,2), 'dp': round(chgp,2)}
+    except Exception as e:
+        print(f"Stooq error {symbol}: {e}")
+        return {}
+
+# ── OPEN EXCHANGE RATES (FX - replaces Finnhub OANDA) ────────────────
+
+_fx_cache = {}
+_fx_ts    = 0
+
+def get_fx_rates():
+    """Get all FX rates - cached 1 hour"""
+    global _fx_cache, _fx_ts
+    if time.time() - _fx_ts < 3600 and _fx_cache:
+        return _fx_cache
+    try:
+        if OPENEX_KEY:
+            r = requests.get(f"{OPENEX_BASE}/latest.json",
+                            params={'app_id': OPENEX_KEY}, timeout=10)
+            if r.status_code == 200:
+                _fx_cache = r.json().get('rates', {})
+                _fx_ts = time.time()
+                return _fx_cache
+        # Fallback: use Yahoo Finance for GBP/USD
+        q = yf_quote('GBPUSD=X')
+        if q.get('c'):
+            _fx_cache = {'GBP': 1/q['c'] if q['c'] else 0.79}
+            _fx_ts = time.time()
+            return _fx_cache
+    except Exception as e:
+        print(f"FX rates error: {e}")
+    return {}
+
+def get_gbpusd():
+    """Get GBP/USD rate"""
+    rates = get_fx_rates()
+    if rates:
+        gbp = rates.get('GBP', 0)
+        if gbp: return round(1/gbp, 4)
+    # Last resort: Yahoo Finance direct
+    q = yf_quote('GBPUSD=X')
+    rate = q.get('c', 0)
+    if rate:
+        _quote_cache['OANDA:GBP_USD'] = {'c': rate, 'dp': q.get('dp',0)}
+    return rate or 1.27
+
+# ── ALPHA VANTAGE (Pre-calculated indicators) ─────────────────────────
+
+def alpha_indicator(symbol, func='RSI', period=14):
+    """Alpha Vantage technical indicator - pre-calculated"""
+    if not ALPHA_KEY: return {}
+    try:
+        params = {
+            'function': func, 'symbol': symbol,
+            'time_period': period, 'series_type': 'close',
+            'apikey': ALPHA_KEY
+        }
+        r = requests.get(ALPHA_BASE, params=params, timeout=15)
+        if r.status_code != 200: return {}
+        data = r.json()
+        if 'Information' in data:
+            print(f"Alpha Vantage limit hit: {data['Information'][:50]}")
+            return {}
+        return data
+    except Exception as e:
+        print(f"Alpha Vantage error {symbol}: {e}")
+        return {}
+
+# ── POLYGON.IO (News + quotes) ────────────────────────────────────────
+
+def polygon_news(symbol, limit=10):
+    """Polygon news for a ticker"""
+    if not POLYGON_KEY: return []
+    try:
+        r = requests.get(f"{POLYGON_BASE}/v2/reference/news",
+                        params={'ticker':symbol,'limit':limit,'apiKey':POLYGON_KEY},
+                        timeout=10)
+        if r.status_code != 200: return []
+        items = r.json().get('results', [])
+        news = []
+        for item in items:
+            news.append({
+                'headline': item.get('title',''),
+                'summary':  item.get('description','')[:200],
+                'url':      item.get('article_url',''),
+                'source':   item.get('publisher',{}).get('name','Polygon'),
+                'datetime': int(time.mktime(time.strptime(item['published_utc'][:19], '%Y-%m-%dT%H:%M:%S'))) if item.get('published_utc') else int(time.time()),
+                'sentiment':'Neutral',
+            })
+        return news
+    except Exception as e:
+        print(f"Polygon news error {symbol}: {e}")
+        return []
+
+# ── MARKETAUX (News + sentiment) ──────────────────────────────────────
+
+def marketaux_news(symbol, limit=5):
+    """Marketaux news with sentiment scores"""
+    if not MARKETAUX_KEY: return []
+    try:
+        r = requests.get(f"{MARKETAUX_BASE}/news/all",
+                        params={'symbols':symbol,'limit':limit,
+                                'api_token':MARKETAUX_KEY,'language':'en'},
+                        timeout=10)
+        if r.status_code != 200: return []
+        items = r.json().get('data',[])
+        news = []
+        for item in items:
+            # Marketaux gives sentiment score -1 to 1
+            score = item.get('sentiment_score', 0) or 0
+            sentiment = 'Bullish' if score > 0.2 else 'Bearish' if score < -0.2 else 'Neutral'
+            news.append({
+                'headline': item.get('title',''),
+                'summary':  item.get('description','')[:200],
+                'url':      item.get('url',''),
+                'source':   item.get('source','Marketaux'),
+                'datetime': int(time.mktime(time.strptime(item['published_at'][:19], '%Y-%m-%dT%H:%M:%S'))) if item.get('published_at') else int(time.time()),
+                'sentiment': sentiment,
+                'sentiment_score': round(score, 2),
+            })
+        return news
+    except Exception as e:
+        print(f"Marketaux error {symbol}: {e}")
+        return []
+
+# ── FINANCIAL MODELING PREP (Analyst ratings + fundamentals) ─────────
+
+_fmp_cache = {}
+
+def fmp_analyst(symbol):
+    """FMP analyst consensus - Buy/Hold/Sell + price target"""
+    if not FMP_KEY: return {}
+    cache_key = f"fmp_analyst_{symbol}"
+    if cache_valid(_fmp_cache.get(cache_key), 3600):
+        return _fmp_cache[cache_key]['data']
+    try:
+        # Analyst consensus
+        r1 = requests.get(f"{FMP_BASE}/analyst-stock-recommendations/{symbol}",
+                         params={'apikey':FMP_KEY}, timeout=10)
+        # Price target
+        r2 = requests.get(f"{FMP_BASE}/price-target-consensus/{symbol}",
+                         params={'apikey':FMP_KEY}, timeout=10)
+        result = {}
+        if r1.status_code == 200:
+            recs = r1.json()
+            if recs:
+                latest = recs[0]
+                result['buy']       = latest.get('analystRatingsbuy', 0)
+                result['hold']      = latest.get('analystRatingsHold', 0)
+                result['sell']      = latest.get('analystRatingsSell', 0)
+                result['consensus'] = latest.get('analystRatingsStrongBuy', 0)
+        if r2.status_code == 200:
+            targets = r2.json()
+            if targets:
+                t = targets[0]
+                result['targetHigh']    = t.get('targetHigh')
+                result['targetLow']     = t.get('targetLow')
+                result['targetMean']    = t.get('targetConsensus')
+                result['targetMedian']  = t.get('targetMedian')
+        _fmp_cache[cache_key] = {'data': result, 'ts': time.time()}
+        return result
+    except Exception as e:
+        print(f"FMP analyst error {symbol}: {e}")
+        return {}
+
+def fmp_fundamentals(symbol):
+    """FMP key fundamentals - P/E, market cap, revenue"""
+    if not FMP_KEY: return {}
+    cache_key = f"fmp_fund_{symbol}"
+    if cache_valid(_fmp_cache.get(cache_key), 86400):
+        return _fmp_cache[cache_key]['data']
+    try:
+        r = requests.get(f"{FMP_BASE}/quote/{symbol}",
+                        params={'apikey':FMP_KEY}, timeout=10)
+        if r.status_code != 200: return {}
+        data = r.json()
+        if not data: return {}
+        q = data[0]
+        result = {
+            'pe':         q.get('pe'),
+            'eps':        q.get('eps'),
+            'marketCap':  q.get('marketCap'),
+            'beta':       q.get('beta'),
+            'week52High': q.get('yearHigh'),
+            'week52Low':  q.get('yearLow'),
+            'avgVolume':  q.get('avgVolume'),
+        }
+        _fmp_cache[cache_key] = {'data': result, 'ts': time.time()}
+        return result
+    except Exception as e:
+        print(f"FMP fundamentals error {symbol}: {e}")
+        return {}
+
+# ── STOCKTWITS (Social sentiment - no key) ────────────────────────────
+
+def stocktwits_sentiment(symbol):
+    """StockTwits bull/bear sentiment"""
+    try:
+        r = requests.get(f"{STOCKTWITS_BASE}/streams/symbol/{symbol}.json",
+                        params={'limit':30}, timeout=10)
+        if r.status_code != 200: return {}
+        data = r.json()
+        msgs = data.get('messages', [])
+        bull = sum(1 for m in msgs if m.get('entities',{}).get('sentiment',{}).get('basic') == 'Bullish')
+        bear = sum(1 for m in msgs if m.get('entities',{}).get('sentiment',{}).get('basic') == 'Bearish')
+        total = bull + bear
+        return {
+            'bullish': bull, 'bearish': bear, 'total': total,
+            'bullPct': round(bull/total*100) if total else 50,
+            'bearPct': round(bear/total*100) if total else 50,
+        }
+    except Exception as e:
+        print(f"StockTwits error {symbol}: {e}")
+        return {}
+
+# ── FEAR & GREED INDEX (CNN - no key) ────────────────────────────────
+
+_fg_cache = {}
+
+def fear_greed_index():
+    """CNN Fear & Greed Index"""
+    if cache_valid(_fg_cache.get('fg'), 3600):
+        return _fg_cache['fg']['data']
+    try:
+        r = requests.get(
+            'https://production.dataviz.cnn.io/index/fearandgreed/graphdata',
+            headers={'User-Agent':'Mozilla/5.0'}, timeout=10)
+        if r.status_code != 200: return {}
+        data = r.json()
+        score = data.get('fear_and_greed',{}).get('score', 0)
+        rating = data.get('fear_and_greed',{}).get('rating','')
+        result = {'score': round(score), 'rating': rating,
+                  'label': rating.replace('_',' ').title()}
+        _fg_cache['fg'] = {'data': result, 'ts': time.time()}
+        return result
+    except Exception as e:
+        print(f"Fear & Greed error: {e}")
+        return {}
+
+# ── TIPRANKS (Unofficial - no key) ────────────────────────────────────
+
+_tr_cache = {}
+
+def tipranks_data(symbol):
+    """TipRanks unofficial API - Smart Score + analyst consensus"""
+    cache_key = f"tr_{symbol}"
+    if cache_valid(_tr_cache.get(cache_key), 3600):
+        return _tr_cache[cache_key]['data']
+    try:
+        r = requests.get(f"{TIPRANKS_BASE}/getData/",
+                        params={'name': symbol},
+                        headers={
+                            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+                            'Referer': f'https://www.tipranks.com/stocks/{symbol.lower()}/forecast',
+                        }, timeout=15)
+        if r.status_code != 200:
+            print(f"TipRanks {symbol}: {r.status_code}")
+            return {}
+        data = r.json()
+        consensus = data.get('expertRatings', {})
+        smart_score = data.get('tipranksStockScore', {}).get('score')
+        pt = data.get('priceTarget', {})
+        result = {
+            'smartScore':   smart_score,
+            'buy':          consensus.get('buy', 0),
+            'hold':         consensus.get('hold', 0),
+            'sell':         consensus.get('sell', 0),
+            'priceTarget':  pt.get('priceTarget'),
+            'consensus':    data.get('expertRatingDescription',''),
+        }
+        _tr_cache[cache_key] = {'data': result, 'ts': time.time()}
+        return result
+    except Exception as e:
+        print(f"TipRanks error {symbol}: {e}")
+        return {}
+
+# ── SEC EDGAR (Insider trades - no key) ──────────────────────────────
+
+def sec_insider_trades(symbol, limit=5):
+    """SEC EDGAR recent insider transactions"""
+    try:
+        # First get CIK for the company
+        r = requests.get(f"{SEC_BASE}/submissions/CIK{symbol}.json",
+                        headers={'User-Agent':'TradingAssist tradingassist.support@gmail.com'},
+                        timeout=10)
+        if r.status_code != 200:
+            # Try search
+            rs = requests.get('https://efts.sec.gov/LATEST/search-index?q=%22'+symbol+'%22&dateRange=custom&startdt=2024-01-01&forms=4',
+                             headers={'User-Agent':'TradingAssist tradingassist.support@gmail.com'},
+                             timeout=10)
+            return []
+        data = r.json()
+        # Get recent Form 4 filings (insider trades)
+        filings = data.get('filings',{}).get('recent',{})
+        forms   = filings.get('form',[])
+        dates   = filings.get('filingDate',[])
+        trades  = []
+        for i, form in enumerate(forms[:50]):
+            if form == '4':  # Form 4 = insider trades
+                trades.append({'date': dates[i], 'form': '4'})
+                if len(trades) >= limit: break
+        return trades
+    except Exception as e:
+        print(f"SEC EDGAR error {symbol}: {e}")
+        return []
+
+# ── FRED (Macro data) ─────────────────────────────────────────────────
+
+_fred_cache = {}
+
+def fred_series(series_id):
+    """Fetch a FRED data series - e.g. FEDFUNDS, CPIAUCSL, GDP"""
+    if not FRED_KEY: return {}
+    cache_key = f"fred_{series_id}"
+    if cache_valid(_fred_cache.get(cache_key), 86400):
+        return _fred_cache[cache_key]['data']
+    try:
+        r = requests.get(f"{FRED_BASE}/series/observations",
+                        params={
+                            'series_id': series_id,
+                            'api_key': FRED_KEY,
+                            'file_type': 'json',
+                            'limit': 5,
+                            'sort_order': 'desc'
+                        }, timeout=10)
+        if r.status_code != 200: return {}
+        obs = r.json().get('observations', [])
+        if not obs: return {}
+        latest = obs[0]
+        result = {
+            'value': float(latest.get('value', 0)) if latest.get('value') not in ['.',''] else None,
+            'date':  latest.get('date',''),
+            'series': series_id,
+        }
+        _fred_cache[cache_key] = {'data': result, 'ts': time.time()}
+        return result
+    except Exception as e:
+        print(f"FRED error {series_id}: {e}")
+        return {}
+
+def get_macro_data():
+    """Fetch key macro indicators from FRED"""
+    import concurrent.futures
+    series = {
+        'fed_rate':   'FEDFUNDS',      # Fed Funds Rate
+        'cpi':        'CPIAUCSL',      # CPI Inflation
+        'unemployment':'UNRATE',       # Unemployment Rate
+        'gdp_growth': 'A191RL1Q225SBEA', # Real GDP Growth
+        'treasury_10y':'DGS10',        # 10-Year Treasury
+        'treasury_2y': 'DGS2',         # 2-Year Treasury
+    }
+    result = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+        futures = {ex.submit(fred_series, v): k for k,v in series.items()}
+        for f in concurrent.futures.as_completed(futures, timeout=20):
+            k = futures[f]
+            try: result[k] = f.result()
+            except: pass
+    return result
+
+# ── NEWS API (newsapi.org) ────────────────────────────────────────────
+
+def newsapi_news(symbol, company_name='', limit=5):
+    """NewsAPI.org financial news"""
+    if not NEWS_API_KEY: return []
+    try:
+        query = company_name if company_name else symbol
+        r = requests.get(f"{NEWS_BASE}/everything",
+                        params={
+                            'q': f'{query} stock',
+                            'apiKey': NEWS_API_KEY,
+                            'language': 'en',
+                            'sortBy': 'publishedAt',
+                            'pageSize': limit,
+                        }, timeout=10)
+        if r.status_code != 200: return []
+        articles = r.json().get('articles', [])
+        news = []
+        for a in articles:
+            import dateutil.parser
+            try:
+                dt = int(dateutil.parser.parse(a['publishedAt']).timestamp()) if a.get('publishedAt') else int(time.time())
+            except:
+                dt = int(time.time())
+            news.append({
+                'headline': a.get('title',''),
+                'summary':  (a.get('description') or '')[:200],
+                'url':      a.get('url',''),
+                'source':   a.get('source',{}).get('name','NewsAPI'),
+                'datetime': dt,
+                'sentiment':'Neutral',
+            })
+        return news
+    except Exception as e:
+        print(f"NewsAPI error {symbol}: {e}")
+        return []
+
+
 def get_quote_td(symbol):
     """Get quote from Twelve Data"""
     data = td("price", {"symbol": symbol})
@@ -772,11 +1337,26 @@ def score_signal(rsi, macd, macd_sig, ma50, ma200, closes):
 def get_candles(symbol):
     if cache_valid(_candle_cache.get(symbol), CANDLE_TTL):
         return _candle_cache[symbol]
+
+    # PRIMARY: Yahoo Finance (no key, unlimited, very reliable)
+    yf_data = yf_candles(symbol, period='6mo', interval='1d')
+    if yf_data and len(yf_data.get('closes',[])) >= 20:
+        entry = {
+            'closes':  yf_data['closes'],
+            'highs':   yf_data.get('highs',[]),
+            'lows':    yf_data.get('lows',[]),
+            'volumes': yf_data.get('volumes',[]),
+            'ts':      time.time()
+        }
+        _candle_cache[symbol] = entry
+        return entry
+
+    # FALLBACK: Finnhub
     to_ts=int(time.time()); from_ts=to_ts-(300*86400)
     data=fh("stock/candle",{"symbol":symbol,"resolution":"D","from":from_ts,"to":to_ts})
     if not data or data.get("s")!="ok":
         # Fallback to Twelve Data
-        print(f"Finnhub candles failed for {symbol} - trying Twelve Data")
+        print(f"YF+Finnhub candles failed for {symbol} - trying Twelve Data")
         td_data = get_candles_td(symbol)
         if td_data.get("closes"):
             td_data["ts"] = time.time()
@@ -846,6 +1426,18 @@ def get_profile(symbol):
 def get_quote(symbol):
     if cache_valid(_quote_cache.get(symbol), QUOTE_TTL):
         return _quote_cache[symbol]
+
+    # Skip Yahoo for OANDA/forex symbols - use FX rates
+    if 'OANDA:' in symbol or '/' in symbol:
+        pass  # fall through to Finnhub
+    else:
+        # PRIMARY: Yahoo Finance
+        yq = yf_quote(symbol)
+        if yq and yq.get('c') and float(yq['c']) > 0:
+            entry = {'c': yq['c'], 'd': yq.get('d',0), 'dp': yq.get('dp',0),
+                     'pc': yq.get('pc',0), 'h': 0, 'l': 0, 'o': 0, 't': int(time.time())}
+            _quote_cache[symbol] = entry
+            return entry
     data=fh("quote",{"symbol":symbol})
     if not data.get("c"):
         # Fallback to Twelve Data
@@ -860,25 +1452,7 @@ def get_quote(symbol):
 _bg_symbols = set()
 _bg_lock    = threading.Lock()
 
-def get_gbpusd():
-    """Get GBP/USD rate - use Twelve Data forex (free tier supports forex)"""
-    if TWELVE_KEY:
-        try:
-            data = td("quote", {"symbol": "GBP/USD"})
-            if data and not data.get("code"):
-                rate = float(data.get("close") or data.get("price") or 0)
-                if 0.5 < rate < 3.0:  # sanity check
-                    _quote_cache["OANDA:GBP_USD"] = {"c": rate, "dp": 0}
-                    return rate
-        except: pass
-    # Fallback to Finnhub
-    try:
-        q = fh("quote", {"symbol": "OANDA:GBP_USD"})
-        if q and q.get("c"): 
-            _quote_cache["OANDA:GBP_USD"] = q
-            return q["c"]
-    except: pass
-    return 1.27  # default fallback
+# get_gbpusd() is now defined in new API section above
 
 def background_prefetch():
     # Pre-fetch GBP/USD exchange rate on startup
@@ -1459,32 +2033,40 @@ def api_profile(symbol):
     return jsonify({"name":p.get("name",""),"industry":p.get("industry","")})
 
 def get_yahoo_news(symbol):
-    """Fetch news from Yahoo Finance RSS feed"""
-    try:
-        url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=US&lang=en-US"
-        r = requests.get(url, timeout=10, headers={"User-Agent":"Mozilla/5.0"})
-        if r.status_code != 200: return []
-        import xml.etree.ElementTree as ET
-        root = ET.fromstring(r.text)
-        items = []
-        for item in root.findall(".//item")[:10]:
-            title = item.findtext("title","")
-            link  = item.findtext("link","")
-            desc  = item.findtext("description","")
-            pub   = item.findtext("pubDate","")
-            try:
-                from email.utils import parsedate_to_datetime
-                dt = int(parsedate_to_datetime(pub).timestamp()) if pub else 0
-            except: dt = 0
-            if title:
-                items.append({"headline":title,"summary":desc[:300],"url":link,"source":"Yahoo Finance","datetime":dt})
-        return items
-    except Exception as e:
-        print(f"Yahoo news error for {symbol}: {e}")
-        return []
+    """Yahoo Finance RSS news - kept for compatibility"""
+    return yf_news(symbol)
 
-@app.route('/api/news/<symbol>')
-@require_login
+def get_all_news(symbol, company_name='', limit=15):
+    """Fetch news from ALL sources in parallel - deduplicated"""
+    import concurrent.futures
+    all_news = []
+    seen_titles = set()
+
+    def fetch_yf():     return yf_news(symbol, count=limit)
+    def fetch_poly():   return polygon_news(symbol, limit=5) if POLYGON_KEY else []
+    def fetch_mktaux(): return marketaux_news(symbol, limit=5) if MARKETAUX_KEY else []
+    def fetch_fh():     return [{'headline':n.get('headline',''),'summary':n.get('summary',''),
+                                  'url':n.get('url',''),'source':n.get('source','Finnhub'),
+                                  'datetime':n.get('datetime',0),'sentiment':'Neutral'}
+                                 for n in (fh('company-news',{'symbol':symbol,
+                                    'from':(datetime.now()-timedelta(days=30)).strftime('%Y-%m-%d'),
+                                    'to':datetime.now().strftime('%Y-%m-%d')}) or [])[:5]]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+        futures = [ex.submit(f) for f in [fetch_yf, fetch_poly, fetch_mktaux, fetch_fh]]
+        for f in concurrent.futures.as_completed(futures, timeout=15):
+            try:
+                for item in f.result():
+                    title = item.get('headline','')[:50]
+                    if title and title not in seen_titles:
+                        seen_titles.add(title)
+                        all_news.append(item)
+            except: pass
+
+    all_news.sort(key=lambda x: x.get('datetime',0), reverse=True)
+    return all_news[:limit]
+
+
 def api_news(symbol):
     today=datetime.now().strftime("%Y-%m-%d")
     week_ago=(datetime.now()-timedelta(days=7)).strftime("%Y-%m-%d")
@@ -1551,21 +2133,27 @@ def api_earnings():
     past=(datetime.now()-timedelta(days=90)).strftime("%Y-%m-%d")
     import concurrent.futures
     def fetch_upcoming(from_dt, to_dt):
+        # PRIMARY: Nasdaq earnings API (no key, very reliable)
+        items = nasdaq_earnings(from_dt, to_dt)
+        if items:
+            print(f"Nasdaq earnings: got {len(items)} upcoming items")
+            return {"earningsCalendar": items}
+        # FALLBACK: Finnhub
         result = fh("calendar/earnings", {"from": from_dt, "to": to_dt})
-        if result and isinstance(result, dict):
-            count = len(result.get("earningsCalendar",[]))
-            print(f"Earnings upcoming: got {count} items")
-        else:
-            print(f"Earnings upcoming: empty response")
+        count = len((result or {}).get("earningsCalendar",[]))
+        print(f"Finnhub earnings: got {count} upcoming items")
         return result or {}
 
     def fetch_past(from_dt, to_dt):
+        # PRIMARY: Nasdaq (past)
+        items = nasdaq_earnings(from_dt, to_dt)
+        if items:
+            print(f"Nasdaq past earnings: got {len(items)} items")
+            return {"earningsCalendar": items}
+        # FALLBACK: Finnhub
         result = fh("calendar/earnings", {"from": from_dt, "to": to_dt})
-        if result and isinstance(result, dict):
-            count = len(result.get("earningsCalendar",[]))
-            print(f"Earnings past: got {count} items")
-        else:
-            print(f"Earnings past: empty response")
+        count = len((result or {}).get("earningsCalendar",[]))
+        print(f"Finnhub past earnings: got {count} items")
         return result or {}
 
     try:
@@ -1844,145 +2432,122 @@ def save_user_watchlist():
 @app.route('/api/market/indices')
 @require_login  
 def api_market_indices():
-    """Fetch major market indices, commodities, crypto, forex"""
+    """Fetch market data from multiple sources - Yahoo Finance primary, Stooq for global"""
     import concurrent.futures
     if cache_valid(_market_cache.get("data"), MARKET_TTL):
         return jsonify(_market_cache["data"])
 
+    # Yahoo Finance symbols for each category
     MARKET_SYMS = {
         "us_indices": [
-            {"key":"SPX",     "name":"S&P 500",         "currency":"USD","type":"index"},
-            {"key":"IXIC",    "name":"NASDAQ",           "currency":"USD","type":"index"},
-            {"key":"DJI",     "name":"Dow Jones",        "currency":"USD","type":"index"},
-            {"key":"RUT",     "name":"Russell 2000",     "currency":"USD","type":"index"},
-            {"key":"VIX",     "name":"VIX Fear Index",   "currency":"USD","type":"index"},
+            {"key":"^GSPC",  "yf":"^GSPC",  "name":"S&P 500",       "currency":"USD","type":"index"},
+            {"key":"^IXIC",  "yf":"^IXIC",  "name":"NASDAQ",         "currency":"USD","type":"index"},
+            {"key":"^DJI",   "yf":"^DJI",   "name":"Dow Jones",      "currency":"USD","type":"index"},
+            {"key":"^RUT",   "yf":"^RUT",   "name":"Russell 2000",   "currency":"USD","type":"index"},
+            {"key":"^VIX",   "yf":"^VIX",   "name":"VIX Fear Index", "currency":"USD","type":"index"},
         ],
         "us_stocks": [
-            {"key":"AAPL",    "name":"Apple",            "currency":"USD","type":"stock"},
-            {"key":"MSFT",    "name":"Microsoft",        "currency":"USD","type":"stock"},
-            {"key":"NVDA",    "name":"NVIDIA",           "currency":"USD","type":"stock"},
-            {"key":"AMZN",    "name":"Amazon",           "currency":"USD","type":"stock"},
-            {"key":"GOOGL",   "name":"Alphabet",         "currency":"USD","type":"stock"},
-            {"key":"META",    "name":"Meta",             "currency":"USD","type":"stock"},
-            {"key":"TSLA",    "name":"Tesla",            "currency":"USD","type":"stock"},
-            {"key":"AMD",     "name":"AMD",              "currency":"USD","type":"stock"},
+            {"key":"AAPL",   "yf":"AAPL",   "name":"Apple",          "currency":"USD","type":"stock"},
+            {"key":"MSFT",   "yf":"MSFT",   "name":"Microsoft",      "currency":"USD","type":"stock"},
+            {"key":"NVDA",   "yf":"NVDA",   "name":"NVIDIA",         "currency":"USD","type":"stock"},
+            {"key":"AMZN",   "yf":"AMZN",   "name":"Amazon",         "currency":"USD","type":"stock"},
+            {"key":"GOOGL",  "yf":"GOOGL",  "name":"Alphabet",       "currency":"USD","type":"stock"},
+            {"key":"META",   "yf":"META",   "name":"Meta",           "currency":"USD","type":"stock"},
+            {"key":"TSLA",   "yf":"TSLA",   "name":"Tesla",          "currency":"USD","type":"stock"},
+            {"key":"AMD",    "yf":"AMD",    "name":"AMD",            "currency":"USD","type":"stock"},
         ],
         "uk_indices": [
-            {"key":"UKX",     "name":"FTSE 100",         "currency":"GBP","type":"index","exchange":"IDX"},
-            {"key":"MCX",     "name":"FTSE 250",         "currency":"GBP","type":"index","exchange":"IDX"},
+            {"key":"^FTSE",  "yf":"^FTSE",  "name":"FTSE 100",       "currency":"GBP","type":"index"},
+            {"key":"^FTMC",  "yf":"^FTMC",  "name":"FTSE 250",       "currency":"GBP","type":"index"},
         ],
         "uk_stocks": [
-            {"key":"HSBA",    "name":"HSBC",             "currency":"GBP","type":"stock","exchange":"LSE"},
-            {"key":"BP",      "name":"BP",               "currency":"GBP","type":"stock","exchange":"LSE"},
-            {"key":"SHEL",    "name":"Shell",            "currency":"GBP","type":"stock","exchange":"LSE"},
-            {"key":"RIO",     "name":"Rio Tinto",        "currency":"GBP","type":"stock","exchange":"LSE"},
-            {"key":"AZN",     "name":"AstraZeneca",      "currency":"GBP","type":"stock","exchange":"LSE"},
+            {"key":"HSBA.L", "yf":"HSBA.L", "name":"HSBC",           "currency":"GBP","type":"stock"},
+            {"key":"BP.L",   "yf":"BP.L",   "name":"BP",             "currency":"GBP","type":"stock"},
+            {"key":"SHEL.L", "yf":"SHEL.L", "name":"Shell",          "currency":"GBP","type":"stock"},
+            {"key":"AZN.L",  "yf":"AZN.L",  "name":"AstraZeneca",    "currency":"GBP","type":"stock"},
+            {"key":"RIO.L",  "yf":"RIO.L",  "name":"Rio Tinto",      "currency":"GBP","type":"stock"},
         ],
         "india_indices": [
-            {"key":"NIFTY",   "name":"Nifty 50",         "currency":"INR","type":"index","exchange":"NSE"},
-            {"key":"SENSEX",  "name":"BSE Sensex",       "currency":"INR","type":"index","exchange":"BSE"},
+            {"key":"^BSESN", "yf":"^BSESN", "name":"BSE Sensex",     "currency":"INR","type":"index"},
+            {"key":"^NSEI",  "yf":"^NSEI",  "name":"Nifty 50",       "currency":"INR","type":"index"},
         ],
         "india_stocks": [
-            {"key":"TCS",     "name":"TCS",              "currency":"INR","type":"stock","exchange":"NSE"},
-            {"key":"RELIANCE","name":"Reliance",         "currency":"INR","type":"stock","exchange":"NSE"},
-            {"key":"INFY",    "name":"Infosys",          "currency":"INR","type":"stock","exchange":"NSE"},
-            {"key":"HDFCBANK","name":"HDFC Bank",        "currency":"INR","type":"stock","exchange":"NSE"},
+            {"key":"TCS.NS", "yf":"TCS.NS", "name":"TCS",            "currency":"INR","type":"stock"},
+            {"key":"RELIANCE.NS","yf":"RELIANCE.NS","name":"Reliance","currency":"INR","type":"stock"},
+            {"key":"INFY.NS","yf":"INFY.NS","name":"Infosys",         "currency":"INR","type":"stock"},
+            {"key":"HDFCBANK.NS","yf":"HDFCBANK.NS","name":"HDFC Bank","currency":"INR","type":"stock"},
         ],
         "europe_indices": [
-            {"key":"SX5E",    "name":"Euro Stoxx 50",    "currency":"EUR","type":"index","exchange":"IDX"},
-            {"key":"DAX",     "name":"DAX Germany",      "currency":"EUR","type":"index","exchange":"IDX"},
-            {"key":"CAC40",   "name":"CAC 40 France",    "currency":"EUR","type":"index","exchange":"IDX"},
-            {"key":"IBEX35",  "name":"IBEX 35 Spain",    "currency":"EUR","type":"index","exchange":"IDX"},
+            {"key":"^STOXX50E","yf":"^STOXX50E","name":"Euro Stoxx 50","currency":"EUR","type":"index"},
+            {"key":"^GDAXI",  "yf":"^GDAXI",  "name":"DAX Germany",  "currency":"EUR","type":"index"},
+            {"key":"^FCHI",   "yf":"^FCHI",   "name":"CAC 40 France","currency":"EUR","type":"index"},
+            {"key":"^IBEX",   "yf":"^IBEX",   "name":"IBEX 35 Spain","currency":"EUR","type":"index"},
         ],
         "asia_indices": [
-            {"key":"N225",    "name":"Nikkei 225",       "currency":"JPY","type":"index","exchange":"IDX"},
-            {"key":"HSI",     "name":"Hang Seng",        "currency":"HKD","type":"index","exchange":"IDX"},
-            {"key":"SHCOMP",  "name":"Shanghai Comp",    "currency":"CNY","type":"index","exchange":"IDX"},
-            {"key":"KOSPI",   "name":"KOSPI Korea",      "currency":"KRW","type":"index","exchange":"IDX"},
+            {"key":"^N225",   "yf":"^N225",   "name":"Nikkei 225",   "currency":"JPY","type":"index"},
+            {"key":"^HSI",    "yf":"^HSI",    "name":"Hang Seng",    "currency":"HKD","type":"index"},
+            {"key":"000001.SS","yf":"000001.SS","name":"Shanghai Comp","currency":"CNY","type":"index"},
+            {"key":"^KS11",   "yf":"^KS11",   "name":"KOSPI Korea",  "currency":"KRW","type":"index"},
         ],
         "crypto": [
-            {"key":"BTC/USD", "name":"Bitcoin",          "currency":"USD","type":"crypto"},
-            {"key":"ETH/USD", "name":"Ethereum",         "currency":"USD","type":"crypto"},
-            {"key":"SOL/USD", "name":"Solana",           "currency":"USD","type":"crypto"},
-            {"key":"BNB/USD", "name":"Binance Coin",     "currency":"USD","type":"crypto"},
-            {"key":"XRP/USD", "name":"XRP",              "currency":"USD","type":"crypto"},
-            {"key":"ADA/USD", "name":"Cardano",          "currency":"USD","type":"crypto"},
+            {"key":"BTC-USD", "yf":"BTC-USD", "name":"Bitcoin",      "currency":"USD","type":"crypto"},
+            {"key":"ETH-USD", "yf":"ETH-USD", "name":"Ethereum",     "currency":"USD","type":"crypto"},
+            {"key":"SOL-USD", "yf":"SOL-USD", "name":"Solana",       "currency":"USD","type":"crypto"},
+            {"key":"BNB-USD", "yf":"BNB-USD", "name":"Binance Coin", "currency":"USD","type":"crypto"},
+            {"key":"XRP-USD", "yf":"XRP-USD", "name":"XRP",          "currency":"USD","type":"crypto"},
         ],
         "commodities": [
-            {"key":"XAU/USD", "name":"Gold ($/oz)",      "currency":"USD","type":"commodity"},
-            {"key":"XAG/USD", "name":"Silver ($/oz)",    "currency":"USD","type":"commodity"},
-            {"key":"USOIL",   "name":"Crude Oil WTI",    "currency":"USD","type":"commodity"},
-            {"key":"UKOIL",   "name":"Crude Oil Brent",  "currency":"USD","type":"commodity"},
-            {"key":"NATGAS",  "name":"Natural Gas",      "currency":"USD","type":"commodity"},
-            {"key":"COPPER",  "name":"Copper",           "currency":"USD","type":"commodity"},
+            {"key":"GC=F",    "yf":"GC=F",    "name":"Gold ($/oz)",  "currency":"USD","type":"commodity"},
+            {"key":"SI=F",    "yf":"SI=F",    "name":"Silver ($/oz)","currency":"USD","type":"commodity"},
+            {"key":"CL=F",    "yf":"CL=F",    "name":"Crude Oil WTI","currency":"USD","type":"commodity"},
+            {"key":"BZ=F",    "yf":"BZ=F",    "name":"Brent Crude",  "currency":"USD","type":"commodity"},
+            {"key":"NG=F",    "yf":"NG=F",    "name":"Natural Gas",  "currency":"USD","type":"commodity"},
+            {"key":"HG=F",    "yf":"HG=F",    "name":"Copper",       "currency":"USD","type":"commodity"},
         ],
         "forex": [
-            {"key":"GBP/USD", "name":"GBP/USD",          "currency":"","type":"forex"},
-            {"key":"EUR/USD", "name":"EUR/USD",          "currency":"","type":"forex"},
-            {"key":"USD/JPY", "name":"USD/JPY",          "currency":"","type":"forex"},
-            {"key":"GBP/EUR", "name":"GBP/EUR",          "currency":"","type":"forex"},
-            {"key":"USD/INR", "name":"USD/INR",          "currency":"","type":"forex"},
-            {"key":"GBP/INR", "name":"GBP/INR",          "currency":"","type":"forex"},
-            {"key":"EUR/GBP", "name":"EUR/GBP",          "currency":"","type":"forex"},
-            {"key":"AUD/USD", "name":"AUD/USD",          "currency":"","type":"forex"},
-            {"key":"USD/CHF", "name":"USD/CHF",          "currency":"","type":"forex"},
-            {"key":"USD/CAD", "name":"USD/CAD",          "currency":"","type":"forex"},
+            {"key":"GBPUSD=X","yf":"GBPUSD=X","name":"GBP/USD",     "currency":"","type":"forex"},
+            {"key":"EURUSD=X","yf":"EURUSD=X","name":"EUR/USD",     "currency":"","type":"forex"},
+            {"key":"USDJPY=X","yf":"USDJPY=X","name":"USD/JPY",     "currency":"","type":"forex"},
+            {"key":"GBPEUR=X","yf":"GBPEUR=X","name":"GBP/EUR",     "currency":"","type":"forex"},
+            {"key":"USDINR=X","yf":"USDINR=X","name":"USD/INR",     "currency":"","type":"forex"},
+            {"key":"GBPINR=X","yf":"GBPINR=X","name":"GBP/INR",     "currency":"","type":"forex"},
+            {"key":"AUDUSD=X","yf":"AUDUSD=X","name":"AUD/USD",     "currency":"","type":"forex"},
+            {"key":"USDCHF=X","yf":"USDCHF=X","name":"USD/CHF",     "currency":"","type":"forex"},
+            {"key":"USDCAD=X","yf":"USDCAD=X","name":"USD/CAD",     "currency":"","type":"forex"},
         ],
     }
 
     def fetch_one(item):
-        key      = item.get("key","").strip()
-        itype    = item.get("type","stock")
-        exchange = item.get("exchange","")
-
-        # Skip empty keys
-        if not key: return {**item, "price": None, "change": 0, "changePct": 0}
-
-        # US stocks: use Finnhub (fast, no rate limit)
-        if itype == "stock" and not exchange:
-            try:
-                q = fh("quote", {"symbol": key})
-                if q and float(q.get("c",0) or 0) > 0:
-                    return {**item,
-                        "price": round(float(q["c"]),2),
-                        "change": round(float(q.get("d",0) or 0),2),
-                        "changePct": round(float(q.get("dp",0) or 0),2)
-                    }
-            except: pass
-
-        # Everything else: Twelve Data
-        if TWELVE_KEY:
-            try:
-                params = {"symbol": key}
-                if exchange and exchange != "IDX": params["exchange"] = exchange
-                data = td("quote", params)
-                if data and not data.get("code") and data.get("status") != "error":
-                    price = float(data.get("close") or data.get("last") or 0)
-                    chg   = float(data.get("change",0) or 0)
-                    pct   = float(data.get("percent_change",0) or 0)
-                    if price > 0:
-                        dec = 4 if itype in ("forex","crypto") else 2
-                        return {**item, "price":round(price,dec),
-                                "change":round(chg,2), "changePct":round(pct,2)}
-                print(f"TD empty for {key}: {str(data)[:80]}")
-            except Exception as e:
-                print(f"Market fetch error {key}: {e}")
-
-        return {**item, "price": None, "change": 0, "changePct": 0}
+        key   = item.get("yf") or item.get("key","")
+        itype = item.get("type","stock")
+        if not key: return {**item, "price":None, "change":0, "changePct":0}
+        try:
+            q = yf_quote(key)
+            if q and q.get("c") and float(q.get("c",0)) > 0:
+                dec = 4 if itype in ("forex","crypto") else 2
+                price = float(q["c"])
+                return {**item,
+                    "price":     round(price, dec if price < 100 else 2),
+                    "change":    round(float(q.get("d",0)),4),
+                    "changePct": round(float(q.get("dp",0)),2),
+                }
+        except Exception as e:
+            print(f"Market fetch error {key}: {e}")
+        return {**item, "price":None, "change":0, "changePct":0}
 
     result = {k: [] for k in MARKET_SYMS}
     all_items = [(k, item) for k, items in MARKET_SYMS.items() for item in items]
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
-            futures = {ex.submit(fetch_one, item): (k, item) for k, item in all_items}
-            for f in concurrent.futures.as_completed(futures, timeout=25):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+            futures = {ex.submit(fetch_one, item): (k, item) for k,item in all_items}
+            for f in concurrent.futures.as_completed(futures, timeout=30):
                 k, item = futures[f]
                 try:
                     r = f.result()
                     result[k].append(r)
                 except:
-                    result[k].append({**item, "price": None, "change": 0, "changePct": 0})
+                    result[k].append({**item, "price":None, "change":0, "changePct":0})
     except Exception as e:
         print(f"Market indices error: {e}")
 
@@ -2033,6 +2598,45 @@ def api_indicators_batch():
 
     return jsonify(result)
 
+@app.route('/api/analyst/<symbol>')
+@require_login
+def api_analyst(symbol):
+    """Analyst ratings from TipRanks + FMP"""
+    sym = clean_symbol(symbol)
+    result = {}
+    # Try TipRanks first (unofficial)
+    tr = tipranks_data(sym)
+    if tr: result['tipranks'] = tr
+    # Try FMP
+    fmp = fmp_analyst(sym)
+    if fmp: result['fmp'] = fmp
+    # Get StockTwits sentiment
+    st = stocktwits_sentiment(sym)
+    if st: result['stocktwits'] = st
+    # Get fundamentals
+    fund = fmp_fundamentals(sym)
+    if fund: result['fundamentals'] = fund
+    return jsonify(result)
+
+@app.route('/api/macro')
+@require_login
+def api_macro():
+    """FRED macro economic indicators"""
+    if cache_valid(_fred_cache.get('macro'), 3600):
+        return jsonify(_fred_cache['macro']['data'])
+    data = get_macro_data()
+    fg = fear_greed_index()
+    result = {'macro': data, 'fearGreed': fg}
+    _fred_cache['macro'] = {'data': result, 'ts': time.time()}
+    return jsonify(result)
+
+@app.route('/api/sentiment/<symbol>')
+@require_login
+def api_sentiment(symbol):
+    """Social sentiment from StockTwits"""
+    sym = clean_symbol(symbol)
+    return jsonify(stocktwits_sentiment(sym))
+
 @app.route('/api/cache/status')
 @require_login
 def api_cache_status():
@@ -2049,4 +2653,29 @@ def api_cache_status():
 
 if __name__=="__main__":
     port=int(os.environ.get("PORT",5000))
-    app.run(host="0.0.0.0",port=port,debug=False)
+    app.run(host="0.0.0.0",port=port,debug=False)@app.route('/api/news/<symbol>')
+@require_login
+def api_news(symbol):
+    """Get news from all sources for a symbol"""
+    sym = clean_symbol(symbol)
+    cache_key = f"news_{sym}"
+    if cache_valid(_news_cache.get(cache_key), 1800):
+        return jsonify(_news_cache[cache_key]['data'])
+
+    # Get company name for better news search
+    profile = _profile_cache.get(sym, {})
+    company = profile.get('name','')
+
+    news = get_all_news(sym, company_name=company, limit=15)
+    _news_cache[cache_key] = {'data': news, 'ts': time.time()}
+    return jsonify(news)
+
+# ── STARTUP ───────────────────────────────────────────────────────────
+import threading as _threading
+_bg_thread = _threading.Thread(target=background_prefetch, daemon=True)
+_bg_thread.start()
+
+if __name__ == '__main__':
+    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
+
