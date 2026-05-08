@@ -905,37 +905,46 @@ function renderOverview(){
   });
   if(!totalVal) totalVal=combined.totalValue||0;
 
-  // Combined day change = sum of all account day changes (same calc as cards)
+  // Combined day change from T212 portfolio.result (most accurate - comes from T212 directly)
   var totalDayChange=0;
-  (S.portfolio.accounts||[]).forEach(function(acct){
-    (acct.holdings||[]).forEach(function(h){
-      totalDayChange += ((h.dayChangePct||0)/100) * (h.portfolioValue||0);
-    });
+  (S.portfolio.summaries||[]).forEach(function(s){
+    var port=(s.summary&&s.summary.portfolio)||{};
+    totalDayChange += port.result||0;
   });
+  // Fallback to combined.dayChange from /api/summary
   if(totalDayChange===0) totalDayChange=combined.dayChange||0;
   var totalDayChangePct=totalVal?round(totalDayChange/totalVal*100,2):0;
   var bullC=0,bearC=0;
   holdings.forEach(function(h){var sig=(S.indCache[h.indSymbol||h.symbol]||{}).signal||'';if(sig.indexOf('Bullish')>=0)bullC++;if(sig.indexOf('Bearish')>=0)bearC++;});
   // Account cards
   var acctCards=summaries.map(function(s){
-    var sm=s.summary||{};var inv=sm.investments||{};var cash=(sm.cash||{}).availableToTrade||0;
-    // Calculate day change for this account
+    var sm=s.summary||{};
+    // T212 fields: sm.portfolio.result (daily), sm.portfolio.ppl (unrealised), sm.portfolio.realizedPpl
+    var port=sm.portfolio||{};
+    var cash=(sm.cash||{}).availableToTrade||0;
+    // T212 portfolio.result = today's daily P&L for this account
+    var dayChg=port.result||0;
+    var totalVal=sm.totalValue||0;
+    var dayChgPct=totalVal?round(dayChg/totalVal*100,2):0;
+    var unreal=port.ppl||0;
+    var real=port.realizedPpl||0;
     var acctHoldings=(S.portfolio.accounts||[]).find(function(a){return a.label===s.label;});
-    // Calculate day change from holdings dayChangePct
-    var dayChg=0;
-    var acctHoldings=(S.portfolio.accounts||[]).find(function(a){return a.label===s.label;});
-    if(acctHoldings){
-      (acctHoldings.holdings||[]).forEach(function(h){
-        dayChg += ((h.dayChangePct||0)/100) * (h.portfolioValue||0);
-      });
-    }
+    var holdCount=((acctHoldings&&acctHoldings.holdings)||[]).length;
     return '<div class="card" style="border-left:3px solid var(--accent)">'+
       '<div style="font-size:11px;font-weight:600;margin-bottom:8px;color:var(--accent2)">'+esc(s.label||'Account')+'</div>'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:12px">'+
       '<div><div class="clbl">Total Value</div><div style="font-weight:500;color:var(--green2)">'+gbp(sm.totalValue)+'</div></div>'+
       '<div><div class="clbl">Cash</div><div style="font-weight:500">'+gbp(cash)+'</div></div>'+
-      '<div><div class="clbl">Today\'s Change</div><div style="font-weight:500;color:'+(dayChg>=0?'var(--green)':'var(--red)')+'">'+(dayChg>=0?'+':'')+gbp(dayChg)+'</div></div>'+
-      '<div><div class="clbl">Holdings</div><div style="font-weight:500">'+((acctHoldings&&acctHoldings.holdings)||[]).length+' stocks</div></div>'+
+      '<div><div class="clbl">Today\'s Change</div>'+
+        '<div style="font-weight:600;color:'+(dayChg>=0?'var(--green)':'var(--red)')+'">'+
+          (dayChg>=0?'+':'')+gbp(dayChg)+
+          '<span style="font-size:9px;margin-left:3px">'+(dayChg>=0?'+':'')+f(dayChgPct,2)+'%</span>'+
+        '</div></div>'+
+      '<div><div class="clbl">Holdings</div><div style="font-weight:500">'+holdCount+' stocks</div></div>'+
+      '<div><div class="clbl">Unrealised P&L</div><div style="font-weight:500;color:'+(unreal>=0?'var(--green)':'var(--red)')+'">'+
+        (unreal>=0?'+':'')+gbp(unreal)+'</div></div>'+
+      '<div><div class="clbl">Realised P&L</div><div style="font-weight:500;color:'+(real>=0?'var(--green)':'var(--red)')+'">'+
+        (real>=0?'+':'')+gbp(real)+'</div></div>'+
       '</div></div>';
   }).join('');
 
@@ -1109,7 +1118,7 @@ function renderSuggestions(tf){
     // News snippet
     var newsText=sectorNews[s.sector]||s.reason||'';
 
-    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start">'+
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:10px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start">'+
       // LEFT COLUMN
       '<div>'+
         // Header row
@@ -1151,7 +1160,9 @@ function renderSuggestions(tf){
     '</div>';
   }).join('');
 
-  c.innerHTML=cards+
+  // Wrap in 2-column grid
+  var gridHtml='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:8px">'+cards+'</div>';
+  c.innerHTML=gridHtml+
     '<div style="font-size:10px;color:var(--text3);text-align:center;padding:8px 0 2px">'+
       '⚠️ AI suggestions are for informational purposes only. Not financial advice.'+
     '</div>';
@@ -1834,11 +1845,26 @@ function refreshAll(){
     }
   }).catch(function(){});
 
-  // Also fetch macro/sentiment data
+  // Also fetch macro/sentiment data in background
   api('/api/macro').then(function(d){
     if(d) S.macro=d;
     renderOverview();
   }).catch(function(){});
+
+  // Preload markets and news in background (don't wait for tab click)
+  setTimeout(function(){
+    if(!marketsLoaded){
+      api('/api/market/indices').then(function(data){
+        marketsData=data||{};
+        marketsLoaded=true;
+        setTimeout(function(){marketsLoaded=false;},600000);
+      }).catch(function(){});
+    }
+  }, 3000); // start after 3s so portfolio loads first
+
+  setTimeout(function(){
+    if(!newsLoaded) loadNews();
+  }, 8000); // start news after 8s
 
   // Step 2: Load everything in parallel
   Promise.all([

@@ -1951,13 +1951,15 @@ def api_summary():
     total_day_change=0
     for acct in portfolio.get('summaries',[]):
         s=acct.get('summary',{})
-        total_value+=s.get('totalValue',0) or 0
-        total_cash+=(s.get('cash',{}) or {}).get('availableToTrade',0) or 0
-        inv=(s.get('investments',{}) or {})
-        total_unrealised+=inv.get('unrealizedProfitLoss',0) or 0
-        total_realised+=inv.get('realizedProfitLoss',0) or 0
-        # T212 provides result field which reflects today's P&L change
-        total_day_change+=inv.get('result',0) or 0
+        # T212 field names: totalValue, cash.availableToTrade
+        # portfolio.total, portfolio.result (daily), portfolio.ppl (unrealised), portfolio.realizedPpl
+        total_value += s.get('totalValue',0) or 0
+        total_cash  += (s.get('cash',{}) or {}).get('availableToTrade',0) or 0
+        port = s.get('portfolio',{}) or {}
+        total_unrealised  += port.get('ppl',0) or 0
+        total_realised    += port.get('realizedPpl',0) or 0
+        # 'result' in T212 portfolio = today's daily P&L change
+        total_day_change  += port.get('result',0) or 0
     # Calculate day change - fetch quotes if not cached
     all_holdings_flat = []
     for acct in portfolio.get('accounts',[]):
@@ -2663,9 +2665,7 @@ def api_cache_status():
         "twelvedata_configured":bool(TWELVE_KEY)
     })
 
-if __name__=="__main__":
-    port=int(os.environ.get("PORT",5000))
-    app.run(host="0.0.0.0",port=port,debug=False)@app.route('/api/news/<symbol>')
+@app.route('/api/news/<symbol>')
 @require_login
 def api_news(symbol):
     """Get news from all sources for a symbol"""
@@ -2689,5 +2689,3 @@ _bg_thread.start()
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-
-
