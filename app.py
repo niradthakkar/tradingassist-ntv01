@@ -643,7 +643,7 @@ def yf_candles(symbol, period='6mo', interval='1d'):
     try:
         url = f"{YAHOO_BASE}/v8/finance/chart/{symbol}"
         r = requests.get(url, params={'interval':interval,'range':period},
-                        headers={'User-Agent':'Mozilla/5.0'}, timeout=15)
+                        headers={'User-Agent':'Mozilla/5.0'}, timeout=8)
         if r.status_code != 200: return {}
         data = r.json()
         result = data.get('chart',{}).get('result',[])
@@ -1545,9 +1545,19 @@ def basic_holding(h, account_label, acct_cur=None):
     # T212 ppl IS in account settlement currency ✅
     ppl_gbp = round(ppl, 2)
 
-    # ── DAY CHANGE ──────────────────────────────────────────────────
+    # ── DAY CHANGE - use quote cache or fetch from Yahoo ────────────
     q = _quote_cache.get(ind_sym, {})
+    if not q or not q.get("dp"):
+        q = _quote_cache.get(symbol, {})
     day_change_pct = q.get("dp", 0) or 0
+    # If still 0, try Yahoo Finance directly (fast, no rate limit)
+    if day_change_pct == 0 and ind_sym:
+        try:
+            yq = yf_quote(ind_sym)
+            if yq and yq.get("dp"):
+                day_change_pct = yq["dp"]
+                _quote_cache[ind_sym] = {"c": yq.get("c",0), "dp": yq["dp"], "d": yq.get("d",0)}
+        except: pass
 
     h_copy = dict(h)
     if is_uk_etp:
@@ -2054,7 +2064,7 @@ def get_all_news(symbol, company_name='', limit=15):
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
         futures = [ex.submit(f) for f in [fetch_yf, fetch_poly, fetch_mktaux, fetch_fh]]
-        for f in concurrent.futures.as_completed(futures, timeout=15):
+        for f in concurrent.futures.as_completed(futures, timeout=8):
             try:
                 for item in f.result():
                     title = item.get('headline','')[:50]
@@ -2355,9 +2365,10 @@ def api_suggestions():
         owned = ticker in _bg_symbols
 
         # Past performance from live quote
+        dp = float(q.get("dp", 0) or 0)
         perf = {
-            "1d": round(q.get("dp", 0) or 0, 1),
-            "1w": 0, "1m": 0, "1y": 0  # would need historical data
+            "1d": round(dp, 1),
+            "1w": 0, "1m": 0, "1y": 0
         }
 
         # Target forecast (simple signal-based)
@@ -2575,6 +2586,7 @@ def api_indicators_batch():
     symbols = data.get('symbols', [])[:50]
     if not symbols:
         return jsonify({})
+    print(f"Batch indicators: fetching {len(symbols)} symbols: {symbols[:5]}...")
 
     result = {}
 
@@ -2586,9 +2598,9 @@ def api_indicators_batch():
             return sym, {}
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
             futures = {ex.submit(fetch_one, sym): sym for sym in symbols}
-            for f in concurrent.futures.as_completed(futures, timeout=60):
+            for f in concurrent.futures.as_completed(futures, timeout=30):
                 try:
                     sym, ind = f.result()
                     if ind: result[sym] = ind
